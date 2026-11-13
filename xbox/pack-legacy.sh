@@ -127,7 +127,32 @@ fi
 echo "auditing $LAYOUT"
 python3 compat/xbox_audit.py "$LAYOUT" | tee "$BUILD/audit.txt"
 
+# stdout of build-makemsix.sh is only the ELF path. Do not word-split it.
 MAKEMSIX="$(./build-makemsix.sh)"
+if [[ "$MAKEMSIX" == *$'\n'* || "$MAKEMSIX" != /* || ! -f "$MAKEMSIX" || ! -x "$MAKEMSIX" ]]; then
+  echo "build-makemsix.sh did not print the built makemsix binary:" >&2
+  printf '%s\n' "$MAKEMSIX" >&2
+  exit 1
+fi
+if ! head -c 4 -- "$MAKEMSIX" | cmp -s - <(printf '\177ELF'); then
+  echo "refusing to run $MAKEMSIX (not the ELF from cmake bin/)" >&2
+  exit 1
+fi
+msix_bindir="$(dirname "$MAKEMSIX")"
+msix_libdir="$(dirname "$msix_bindir")/lib"
+ld_parts=()
+if [[ -d "$msix_libdir" ]] && compgen -G "$msix_libdir/libmsix.so*" >/dev/null; then
+  ld_parts+=("$msix_libdir")
+fi
+if compgen -G "$msix_bindir/libmsix.so*" >/dev/null; then
+  ld_parts+=("$msix_bindir")
+fi
+if ((${#ld_parts[@]})); then
+  joined="$(IFS=:; printf '%s' "${ld_parts[*]}")"
+  export LD_LIBRARY_PATH="${joined}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
+echo "using makemsix $MAKEMSIX"
+echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH-}"
 mkdir -p "$DIST"
 OUT="$DIST/SKYCHARGE_EdgeHTML_x64_${VER}_unsigned.msix"
 rm -f "$OUT" "${OUT}.sha256"

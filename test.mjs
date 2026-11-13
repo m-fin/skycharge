@@ -2,6 +2,9 @@
 import puppeteer from 'puppeteer-core';
 import path from 'path'; import fs from 'fs'; import http from 'http';
 const browser = await puppeteer.launch({ protocolTimeout: 600000, executablePath: process.env.CHROME || '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage', '--window-size=640,360'] });
+// BUG-023: on a busy box or a shared CI runner, SwiftShader page loads/reloads can pass puppeteer's 30 s default and fail the
+// whole run (seen twice in Actions). Give every page 180 s for navigation and default waits; explicit timeouts still apply.
+{ const np = browser.newPage.bind(browser); browser.newPage = async (...a) => { const p = await np(...a); p.setDefaultNavigationTimeout(180000); p.setDefaultTimeout(180000); return p; }; }
 // GAME=/path/to/www-legacy/index.html runs the same checks against the legacy r162 Xbox bundle (round 6, the single-file music embed, is skipped there)
 const GAME = process.env.GAME ? path.resolve(process.env.GAME) : path.resolve('out/PlaneGame_play.html'), LEGACY = !!process.env.GAME;
 // Music rounds (6 and the weather-music part of 8) need the rendered loops in audio/music/out/, which are build output and

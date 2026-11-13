@@ -33,7 +33,7 @@ Both display names become `SKYCHARGE <version>`: the Properties `<DisplayName>` 
 
 ## Local build
 
-Requirements: Node 20, Python 3, and the compilers `build-makemsix.sh` uses (`build-essential`, `clang`, `libicu-dev`, `zlib1g-dev`, `pkg-config`, `python3-venv`). `makemsix` comes from [microsoft/msix-packaging](https://github.com/microsoft/msix-packaging) commit `25a65f5c1690930813bcc10cdf1d59fa865f2bb1`, built on demand into `xbox/.tools/` (not committed).
+Requirements: Node 20, Python 3, and the compilers `build-makemsix.sh` uses (`build-essential`, `clang`, `libicu-dev`, `zlib1g-dev`, `pkg-config`, `python3-venv`, `patchelf`). `makemsix` comes from [microsoft/msix-packaging](https://github.com/microsoft/msix-packaging) commit `25a65f5c1690930813bcc10cdf1d59fa865f2bb1`, built on demand into `xbox/.tools/makemsix/bin/makemsix` (the cmake ELF, not committed). `libmsix.so` is loaded from the sibling `lib/` directory via `LD_LIBRARY_PATH`.
 
 ```bash
 cd xbox

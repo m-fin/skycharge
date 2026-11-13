@@ -16,7 +16,7 @@ import { createInput } from './input.mjs';
 const q = new URLSearchParams(location.search), seed = +(q.get('seed') || 1), manual = q.get('manual') === '1';
 const FW = +q.get('w') || 0, FH = +q.get('h') || 0, DT = 1 / 60;
 if (q.get('hud') === '0') document.body.classList.add('nohud'); if (manual) document.body.classList.add('manual');
-const $ = (id) => document.getElementById(id);
+const $els = {}, $ = (id) => $els[id] || ($els[id] = document.getElementById(id)); // elements are static: look each up once
 
 // ---- renderer / scene
 const canvas = $('c'), renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: manual });
@@ -342,29 +342,32 @@ function syncMeshes() {
 const mapCtx = $('map').getContext('2d');
 let gaugeT = 0;
 function nearestThermal(x, z) { let b = world.thermals[0], bd = 1e9; for (const t of world.thermals) { const d = Math.hypot(t.x - x, t.z - z); if (d < bd) { bd = d; b = t; } } return b; }
+// HUD writes go through these: they touch the DOM only when the value changed. Setting textContent / innerHTML to the
+// same string still replaces the nodes and invalidates layout, ~30 times a frame (the mission prompt re-parsed its HTML every frame).
+const T = (el, v) => { v = String(v); if (el.__t !== v) { el.__t = v; el.textContent = v; } }, HT = (el, v) => { if (el.__h !== v) { el.__h = v; el.innerHTML = v; } }, CL = (el, v) => { if (el.className !== v) el.className = v; };
 function updateHUD(dt) {
   const v = cur(), gr = world.groundAt(v.pos.x, v.pos.z), hd = headingOf(v), kt = P.settings.units === 'kt', spd = (winged() ? v.v : Math.abs(v.v)) * (kt ? 1.944 : 3.6), gld = G.vehicle === 'glider', sea = G.vehicle === 'seaplane';
-  $('spdu').textContent = kt ? 'kt' : 'km/h'; $('coins').textContent = P.coins; $('found').textContent = `${P.collected.length}/${coins.total} found`;
-  $('veh').textContent = LABEL[G.vehicle]; document.body.classList.toggle('nobat', gld);
-  $('spd').textContent = Math.round(spd); $('alt').textContent = Math.round(v.pos.y); $('agl').textContent = `AGL ${Math.max(0, Math.round(v.pos.y - gr.h - ({ plane: PLANE.gear, blimp: BLIMP.clear, glider: GLIDER.clear, seaplane: SEAPLANE.float, roadster: HOVER.roadster.clear, scooter: HOVER.scooter.clear })[G.vehicle]))}`;
-  { const c = climbNorm(), el = $('vsibar'); $('vsi').textContent = (climbEMA >= 0 ? '▲ +' : '▼ ') + climbEMA.toFixed(1); el.className = c < 0 ? 'sink' : ''; el.style.left = (c < 0 ? 50 + c * 50 : 50) + '%'; el.style.width = Math.abs(c) * 50 + '%'; }
-  $('hdg').textContent = String(Math.round(((hd * 180 / Math.PI) % 360 + 360) % 360) % 360).padStart(3, '0');
-  const hov = hovering(), thr = gld ? 0 : winged() ? v.throttle : hov ? Math.max(v.jets.rear, v.jets.front, v.jets.left, v.jets.right, v.jets.down) : Math.abs(v.thrust); $('thr').textContent = gld ? 'no motor' : hov ? 'AIR ∞' : Math.round(thr * 100) + '%'; $('thrbar').firstChild.style.width = thr * 100 + '%';
-  $('bat').textContent = gld ? 'no battery' : Math.round(v.battery) + '%'; $('batbar').firstChild.style.width = v.battery + '%'; $('batbar').classList.toggle('low', v.battery < 20);
+  T($('spdu'), kt ? 'kt' : 'km/h'); T($('coins'), P.coins); T($('found'), `${P.collected.length}/${coins.total} found`);
+  T($('veh'), LABEL[G.vehicle]); document.body.classList.toggle('nobat', gld);
+  T($('spd'), Math.round(spd)); T($('alt'), Math.round(v.pos.y)); T($('agl'), `AGL ${Math.max(0, Math.round(v.pos.y - gr.h - ({ plane: PLANE.gear, blimp: BLIMP.clear, glider: GLIDER.clear, seaplane: SEAPLANE.float, roadster: HOVER.roadster.clear, scooter: HOVER.scooter.clear })[G.vehicle]))}`);
+  { const c = climbNorm(), el = $('vsibar'); T($('vsi'), (climbEMA >= 0 ? '▲ +' : '▼ ') + climbEMA.toFixed(1)); CL(el, c < 0 ? 'sink' : ''); el.style.left = (c < 0 ? 50 + c * 50 : 50) + '%'; el.style.width = Math.abs(c) * 50 + '%'; }
+  T($('hdg'), String(Math.round(((hd * 180 / Math.PI) % 360 + 360) % 360) % 360).padStart(3, '0'));
+  const hov = hovering(), thr = gld ? 0 : winged() ? v.throttle : hov ? Math.max(v.jets.rear, v.jets.front, v.jets.left, v.jets.right, v.jets.down) : Math.abs(v.thrust); T($('thr'), gld ? 'no motor' : hov ? 'AIR ∞' : Math.round(thr * 100) + '%'); $('thrbar').firstChild.style.width = thr * 100 + '%';
+  T($('bat'), gld ? 'no battery' : Math.round(v.battery) + '%'); $('batbar').firstChild.style.width = v.battery + '%'; $('batbar').classList.toggle('low', v.battery < 20);
   const n = world.nearest(v.pos.x, v.pos.z), wp = G.waypoint != null ? world.stations[G.waypoint] : null;
   if (wp && Math.hypot(wp.padX - v.pos.x, wp.padZ - v.pos.z) < 120) G.waypoint = null;
   const nth = gld ? nearestThermal(v.pos.x, v.pos.z) : null;
   const tgt = G.mission && G.target ? { x: G.target.x, z: G.target.z, name: '🎯 ' + G.target.label } : wp ? { x: wp.padX, z: wp.padZ, name: '📍 ' + wp.name } : gld ? { x: nth.x, z: nth.z, name: '🌀 Thermal' } : hovering() ? { x: n.st.hoverSpawn.x, z: n.st.hoverSpawn.z, name: '⚡ ' + n.st.name } : sea ? { x: DOCK.chargeX, z: DOCK.chargeZ, name: '⚓ ' + DOCK.name } : { x: n.st.padX, z: n.st.padZ, name: '⚡ ' + n.st.name };
   const td = Math.hypot(tgt.x - v.pos.x, tgt.z - v.pos.z), brg = Math.atan2(tgt.x - v.pos.x, -(tgt.z - v.pos.z));
-  $('navname').textContent = tgt.name; $('navd').textContent = td > 1000 ? (td / 1000).toFixed(1) + ' km' : Math.round(td) + ' m';
+  T($('navname'), tgt.name); T($('navd'), td > 1000 ? (td / 1000).toFixed(1) + ' km' : Math.round(td) + ' m');
   document.body.classList.toggle('mission', !!G.mission);
-  const ob = $('obj'); if (G.mission) { ob.innerHTML = `<b>🎯 ${G.mission.def.name.toUpperCase()}</b> ${G.objective}`; ob.className = 'box show'; } else ob.className = 'box';
+  const ob = $('obj'); if (G.mission) { HT(ob, `<b>🎯 ${G.mission.def.name.toUpperCase()}</b> ${G.objective}`); CL(ob, 'box show'); } else CL(ob, 'box');
   const mh = !G.mission && !G.chill ? missionHere() : null, pr = $('prompt');
-  if (mh && (mh.here || mh.other)) { const d = mh.here; pr.className = 'box show';
-    pr.innerHTML = d ? (d.minStart && v.battery < d.minStart ? `⚡ Charge to ${d.minStart}% to start <b>${d.name}</b> (now ${Math.floor(v.battery)}%)` : `<kbd>B</kbd> / <kbd>Enter</kbd> start <b>${d.name}</b> · +${P.completed[d.id] ? Math.round(d.reward / 4) : d.reward} ₿${P.best[d.id] != null ? ` · best ${fmt(P.best[d.id])}` : ''}`) : `<b>${mh.other.name}</b> starts here with the ${mh.other.vehicle} — <kbd>X</kbd> / <kbd>V</kbd> to switch`;
-  } else pr.className = 'box';
+  if (mh && (mh.here || mh.other)) { const d = mh.here; CL(pr, 'box show');
+    HT(pr, d ? (d.minStart && v.battery < d.minStart ? `⚡ Charge to ${d.minStart}% to start <b>${d.name}</b> (now ${Math.floor(v.battery)}%)` : `<kbd>B</kbd> / <kbd>Enter</kbd> start <b>${d.name}</b> · +${P.completed[d.id] ? Math.round(d.reward / 4) : d.reward} ₿${P.best[d.id] != null ? ` · best ${fmt(P.best[d.id])}` : ''}`) : `<b>${mh.other.name}</b> starts here with the ${mh.other.vehicle} — <kbd>X</kbd> / <kbd>V</kbd> to switch`);
+  } else CL(pr, 'box');
   if (flashT > 0) flashT = Math.max(0, flashT - dt); $('flash').style.opacity = (flashT / 0.45 * 0.5).toFixed(3);
-  const pp = $('popup'); if (popT > 0) { popT = Math.max(0, popT - dt); pp.textContent = popTxt; pp.style.opacity = Math.min(1, popT * 2).toFixed(2); pp.style.transform = `translate(-50%, ${(-40 * (1.1 - popT)).toFixed(1)}px)`; } else pp.style.opacity = 0;
+  const pp = $('popup'); if (popT > 0) { popT = Math.max(0, popT - dt); T(pp, popTxt); pp.style.opacity = Math.min(1, popT * 2).toFixed(2); pp.style.transform = `translate(-50%, ${(-40 * (1.1 - popT)).toFixed(1)}px)`; } else pp.style.opacity = 0;
   $('arrow').style.transform = `rotate(${(brg - hd) * 180 / Math.PI - 90}deg)`;
   let st = null, cls = 'info';
   if (winged() && v.crashed) { st = 'CRASHED — RESPAWNING'; cls = 'warn'; }
@@ -376,9 +379,9 @@ function updateHUD(dt) {
   else if (winged() && !v.grounded && v.stalled) { st = 'STALL — NOSE DOWN, ADD THROTTLE'; cls = 'warn'; }
   else if (sea && v.grounded && world.nearDock(v.pos.x, v.pos.z, 22) && v.v >= 6) { st = 'AT THE DOCK — SLOW DOWN TO CHARGE'; }
   else if (G.vehicle === 'plane' && v.grounded && world.inStation(v.pos.x, v.pos.z) && v.v >= 6) { st = 'ON RUNWAY — SLOW DOWN TO CHARGE'; }
-  const s = $('status'); s.textContent = st || ''; s.className = st ? 'show ' + cls : '';
-  $('chilltxt').textContent = gld ? `${v.grounded ? 'Landed' : v.lift > 0.6 ? 'Circling in rising air' : 'Hands-off glide'} · ${Math.round(spd)} ${kt ? 'kt' : 'km/h'} · ${climbEMA >= 0 ? '▲' : '▼'} ${Math.abs(climbEMA).toFixed(1)} m/s · ${Math.round(v.pos.y)} m`
-    : `${(winged() ? (v.grounded ? (sea ? 'Floating' : 'Parked') : 'Autopilot cruise') : hovering() ? (v.landed ? 'Parked' : 'Hover cruise · air ∞') : (G.ap && G.ap.hold ? 'Hovering' : 'Autopilot drift'))} · ${Math.round(spd)} ${kt ? 'kt' : 'km/h'} · ⚡ ${Math.round(v.battery)}%${v.charging ? ' charging' : ''}`;
+  const s = $('status'); T(s, st || ''); CL(s, st ? 'show ' + cls : '');
+  T($('chilltxt'), gld ? `${v.grounded ? 'Landed' : v.lift > 0.6 ? 'Circling in rising air' : 'Hands-off glide'} · ${Math.round(spd)} ${kt ? 'kt' : 'km/h'} · ${climbEMA >= 0 ? '▲' : '▼'} ${Math.abs(climbEMA).toFixed(1)} m/s · ${Math.round(v.pos.y)} m`
+    : `${(winged() ? (v.grounded ? (sea ? 'Floating' : 'Parked') : 'Autopilot cruise') : hovering() ? (v.landed ? 'Parked' : 'Hover cruise · air ∞') : (G.ap && G.ap.hold ? 'Hovering' : 'Autopilot drift'))} · ${Math.round(spd)} ${kt ? 'kt' : 'km/h'} · ⚡ ${Math.round(v.battery)}%${v.charging ? ' charging' : ''}`);
   if (inCab()) { const at = cockpitAttitude(G.vehicle, v), J = hov ? v.jets : null; /* updateCockpit caps itself at 10 Hz and skips hidden cabs */
     updateCockpit(CAB[G.vehicle] || planeCab, { pitch: at.pitch, roll: at.roll, heading: hd, speed: spd, unit: kt ? 'KT' : 'KM/H', alt: v.pos.y, charge: gld ? 100 : v.battery, charging: !!v.charging, climb: climbEMA, boost: J ? Math.max(J.rear, J.front, J.left, J.right, J.down) : 0 }); }
   // minimap (north up)

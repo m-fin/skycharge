@@ -213,18 +213,19 @@ function setChill(on, quiet) {
   G.look.x = G.look.y = 0; snapCam = true;
   if (!quiet) toast(on ? (G.vehicle === 'glider' ? '🪂 Sky drift — hands off, the glider trims itself and circles in rising air. Move a stick to take over.' : '☕ Cabin chill — autopilot is cruising. Move a stick to take over.') : '🕹 You have control');
 }
+const _apF = new THREE.Vector3(), _apR = new THREE.Vector3(); // autopilot scratch vectors (runs every sim tick in chill)
 // autopilot: synthesises inputs that hold a level cruise; turns back toward the island when far out
 function autopilot() {
   const v = cur(), out = { pitch: 0, roll: 0, yaw: 0, up: 0, down: 0 }, ap = G.ap, toCenter = Math.atan2(-v.pos.x, v.pos.z), far = Math.hypot(v.pos.x, v.pos.z) > 2300;
   const hd = headingOf(v); let err = ((toCenter - hd + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
   if (G.vehicle === 'glider') { // hands-off glide: trim speed (pitch 0), wings level, circle gently in rising air, steer away from high ground
-    if (v.grounded) return out; const f = new THREE.Vector3(0, 0, -1).applyQuaternion(v.quat), r = new THREE.Vector3(1, 0, 0).applyQuaternion(v.quat);
+    if (v.grounded) return out; const f = _apF.set(0, 0, -1).applyQuaternion(v.quat), r = _apR.set(1, 0, 0).applyQuaternion(v.quat);
     let ahead = 0; for (const d of [120, 260]) ahead = Math.max(ahead, world.groundAt(v.pos.x + f.x * d, v.pos.z + f.z * d).h);
     const want = ahead > v.pos.y - 70 ? 0.45 : v.lift > 0.6 ? 0.3 : far ? Math.max(-0.3, Math.min(0.3, err * 0.6)) : 0;
     out.roll = Math.max(-1, Math.min(1, (want + r.y) * 3)); return out; }
   if (winged()) {
     if (v.grounded) { out.down = ap.hold ? 1 : 0; return out; }
-    const f = new THREE.Vector3(0, 0, -1).applyQuaternion(v.quat), r = new THREE.Vector3(1, 0, 0).applyQuaternion(v.quat);
+    const f = _apF.set(0, 0, -1).applyQuaternion(v.quat), r = _apR.set(1, 0, 0).applyQuaternion(v.quat);
     let ahead = 0; for (const d of [250, 500, 900]) ahead = Math.max(ahead, world.groundAt(v.pos.x + f.x * d, v.pos.z + f.z * d).h);
     ap.alt = Math.max(ap.alt, ahead + 130);
     const wantFy = Math.max(-0.12, Math.min(0.16, (ap.alt - v.pos.y) * 0.004 - v.vel.y * 0.012));
@@ -267,7 +268,8 @@ function simTick(inp) {
 }
 
 // ---- camera
-let snapCam = true; const camPos = new THREE.Vector3(), camLook = new THREE.Vector3(), tmp = new THREE.Vector3(), tq = new THREE.Quaternion(), te = new THREE.Euler();
+let snapCam = true; const _camWant = new THREE.Vector3(), _camLookT = new THREE.Vector3(); // chase-camera scratch (was 2 new Vector3s per frame)
+const camPos = new THREE.Vector3(), camLook = new THREE.Vector3(), tmp = new THREE.Vector3(), tq = new THREE.Quaternion(), te = new THREE.Euler();
 function updateCamera(dt) {
   const v = cur(), g = MESH[G.vehicle], cab = CAB[G.vehicle] || planeCab;
   const k = snapCam ? 1 : 1 - Math.exp(-dt * 5);
@@ -280,10 +282,10 @@ function updateCamera(dt) {
     if (winged()) { tmp.set(0, 0, -1).applyQuaternion(v.quat); pit = Math.asin(Math.max(-1, Math.min(1, tmp.y))) * 0.6; }
     const zm = G.zoom || 1, dist = { plane: 21, blimp: 50, glider: 13, seaplane: 23, roadster: 9.5, scooter: 6.5 }[G.vehicle] * zm, up = { plane: 5, blimp: 7, glider: 4.2, seaplane: 5.5, roadster: 3, scooter: 2.3 }[G.vehicle] * zm, yaw = hd + G.look.x * Math.PI * 0.9, pp = pit - G.look.y * 0.6;
     const dir = tmp.set(Math.sin(yaw) * Math.cos(pp), Math.sin(pp), -Math.cos(yaw) * Math.cos(pp));
-    const want = new THREE.Vector3().copy(v.pos).addScaledVector(dir, -dist); want.y += up;
+    const want = _camWant.copy(v.pos).addScaledVector(dir, -dist); want.y += up;
     want.y = Math.max(want.y, world.groundAt(want.x, want.z).h + 2.5);
     if (snapCam) camPos.copy(want); else camPos.lerp(want, k);
-    const look = new THREE.Vector3().copy(v.pos).addScaledVector(dir, 15); look.y += winged() ? 1.5 : hovering() ? 0.8 : -2;
+    const look = _camLookT.copy(v.pos).addScaledVector(dir, 15); look.y += winged() ? 1.5 : hovering() ? 0.8 : -2;
     if (snapCam) camLook.copy(look); else camLook.lerp(look, Math.min(1, k * 1.6));
     camera.position.copy(camPos); camera.lookAt(camLook);
   }

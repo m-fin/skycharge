@@ -187,7 +187,9 @@ try {
       if (!f.startsWith(process.cwd()) || (blockOgg && f.endsWith('.ogg')) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { w.writeHead(404); return w.end(); }
       w.writeHead(200, { 'Content-Type': { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg' }[path.extname(f)] || 'application/octet-stream' }); fs.createReadStream(f).pipe(w); });
     srv.listen(0, '127.0.0.1', () => res(srv)); });
-  for (const [name, blockOgg, want] of [['music_http_loader_ogg_first', false, 'ogg'], ['music_http_loader_falls_back_to_mp3', true, 'mp3']]) {
+  // the .ogg loops are local build output (git has only the MP3s): without them the ogg-first case can't run
+  const HAS_OGG = ['cabin_chill_loop', 'flight_theme_loop'].every((n) => fs.existsSync(`audio/music/out/${n}.ogg`)); if (!HAS_OGG) console.log('SKIP music_http_loader_ogg_first: no .ogg loops in audio/music/out/');
+  for (const [name, blockOgg, want] of [['music_http_loader_ogg_first', false, 'ogg'], ['music_http_loader_falls_back_to_mp3', true, 'mp3']].filter(([n]) => HAS_OGG || n !== 'music_http_loader_ogg_first')) {
     const srv = await serve(blockOgg), p3 = await browser.newPage(); const e3 = []; p3.on('pageerror', (e) => e3.push(e.message));
     try { await p3.goto(`http://127.0.0.1:${srv.address().port}/index.html?manual=1&w=320&h=180`); await p3.waitForFunction(() => window.pg && window.pg.ready, { timeout: 60000 });
       await p3.evaluate(() => dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyZ' }))); await p3.waitForFunction(() => pg.music, { timeout: 60000 });
@@ -264,7 +266,9 @@ try {
   });
   // weather music (real decoder, embedded build only): layers load, mix while weather is on, crossfade, MP3 loop window
   const r8m = {};
-  if (MUSIC) { const p4 = await browser.newPage(); const e4 = []; p4.on('pageerror', (e) => e4.push(e.message));
+  // weather layers are embedded only when audio/music/out/weather_<k>_layer.wav exist (git has just the Xbox 22 kHz copies in xbox22k/)
+  const WX_MUSIC = MUSIC && /"rain":\{"type"/.test(fs.readFileSync(GAME, 'utf8')); if (MUSIC && !WX_MUSIC) console.log('SKIP weather music: no weather layers embedded in the build');
+  if (WX_MUSIC) { const p4 = await browser.newPage(); const e4 = []; p4.on('pageerror', (e) => e4.push(e.message));
     await p4.goto('file://' + GAME + '?manual=1&w=320&h=180'); await p4.waitForFunction(() => window.pg && window.pg.ready);
     await p4.evaluate(() => dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyZ' }))); await p4.waitForFunction(() => pg.music && pg.music.weather, { timeout: 90000 });
     const m = await p4.evaluate(async () => { const A = pg.audio, s0 = A.state(); pg.setWeather('rain'); pg.step(2); await new Promise((r) => setTimeout(r, 300)); const s1 = A.state();

@@ -1,8 +1,8 @@
 // node qa_headless.mjs <name> <url> [webgl1] [xboxUA] [secs]  -> QA helper: loads a page headless (SwiftShader), captures
 // console errors/warnings (env NO_FROMENTRIES=1 deletes Object.fromEntries like Edge 18), page errors, failed requests, the WebGL version actually used, and rAF fps. Writes nothing.
-import puppeteer from '/workspace/crave-lab/tools/cdp/node_modules/puppeteer-core/lib/puppeteer/puppeteer-core.js';
+import puppeteer from 'puppeteer-core';
 const [name, url, wg1, xua, secsArg] = process.argv.slice(2); const secs = +(secsArg || 20);
-const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage', '--autoplay-policy=no-user-gesture-required', '--allow-file-access-from-files'] });
+const browser = await puppeteer.launch({ executablePath: process.env.CHROME || '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage', '--autoplay-policy=no-user-gesture-required', '--allow-file-access-from-files'] });
 const out = { name, url, forcedWebGL1: wg1 === '1', xboxUA: xua === '1', console: [], pageErrors: [], failedRequests: [] };
 try {
   const page = await browser.newPage(); await page.setViewport({ width: 1280, height: 720 });

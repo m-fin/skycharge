@@ -1,5 +1,5 @@
 // node qa/life/shots.mjs [names...] -> qa/life/<name>.png (1280x720, headless Chrome, three r186 harness)
-import puppeteer from '/workspace/games/xbox-sideload/tools/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js';
+import puppeteer from 'puppeteer-core';
 import path from 'path';
 const here = path.dirname(new URL(import.meta.url).pathname);
 // helpers available in page: L (layout), at(x,z) ground height, look(px,py,pz, tx,ty,tz), go(frames)
@@ -28,7 +28,7 @@ const SCENES = {
   topdown: `look(0, 5200, 1, 0, 0, 0); go(10);`,
 };
 const names = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(SCENES);
-const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true, protocolTimeout: 600000, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage', '--window-size=1280,720'] });
+const b = await puppeteer.launch({ executablePath: process.env.CHROME || '/usr/bin/google-chrome', headless: true, protocolTimeout: 600000, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage', '--window-size=1280,720'] });
 try { for (const n of names) { const p = await b.newPage(); const errs = []; p.on('pageerror', (e) => errs.push(e.message)); await p.setViewport({ width: 1280, height: 720 });
     await p.goto('file://' + here + '/harness.html?w=1280&h=720'); await p.waitForFunction(() => window.H && H.ready, { timeout: 120000 });
     const info = await p.evaluate(`(()=>{ ${PRE} ${SCENES[n]} const r = H.render(); return { calls: r.calls, tris: r.triangles, dbg: window.__dbg }; })()`).catch((e) => ({ err: e.message }));

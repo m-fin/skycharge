@@ -15,6 +15,11 @@ dist/
 *.p12
 *.pem
 *.key
+# Xbox pack intermediates (makemsix build tree, patched game copy)
+xbox/build/
+xbox/.tools/
+__pycache__/
+*.pyc
 .env
 .env.*
 # renders / video / QA captures

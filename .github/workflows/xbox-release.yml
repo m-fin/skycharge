@@ -9,11 +9,6 @@ on:
       # Four-part tags such as v1.0.9.0. The job rejects anything that is not
       # exactly four numeric parts (Appx versions are Major.Minor.Build.Revision).
       - 'v*.*.*.*'
-    # Verification only: this branch cannot call workflow_dispatch with the
-    # available token. Removed once the 1.0.9.1 pack run is green. A branch
-    # push does not create a release (that step stays tag-only).
-    branches:
-      - cursor/fix-xbox-makemsix-path-728d
   workflow_dispatch:
     inputs:
       version:
@@ -54,8 +49,6 @@ jobs:
           set -euo pipefail
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             VER="$INPUT_VERSION"
-          elif [[ "$REF_NAME" == "cursor/fix-xbox-makemsix-path-728d" ]]; then
-            VER="1.0.9.1"
           else
             VER="${REF_NAME#v}"
           fi

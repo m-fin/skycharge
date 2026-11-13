@@ -1,5 +1,5 @@
 // node stills.mjs <name>  -> stills/<name>.png  (one headless Chrome per still, closed right after)
-import puppeteer from '/workspace/crave-lab/tools/cdp/node_modules/puppeteer-core/lib/puppeteer/puppeteer-core.js';
+import puppeteer from 'puppeteer-core';
 import path from 'path';
 const SCENES = {
   '01_flying_hud': `pg.respawn(0,'plane'); pg.set({grounded:false, agl:170, speed:52, throttle:0.6, heading:2.3, pitch:0.02}); pg.step(90,{roll:0.05}); pg.set({look:{x:0.12,y:0.05}});`,
@@ -21,7 +21,7 @@ const SCENES = {
 };
 const name = process.argv[2], W = +(process.argv[3] || 1280), H = +(process.argv[4] || 720), src = process.argv[5] || 'out/PlaneGame_play.html';
 if (!SCENES[name]) { console.error('scenes:', Object.keys(SCENES).join(' ')); process.exit(1); }
-const browser = await puppeteer.launch({ protocolTimeout: 300000, executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage', `--window-size=${W},${H}`] });
+const browser = await puppeteer.launch({ protocolTimeout: 300000, executablePath: process.env.CHROME || '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage', `--window-size=${W},${H}`] });
 try {
   const page = await browser.newPage(); const errs = []; page.on('pageerror', (e) => errs.push(e.message)); page.on('console', (m) => m.type() === 'error' && errs.push(m.text()));
   await page.setViewport({ width: W, height: H });

@@ -17,10 +17,10 @@ python3 -m http.server 8765
 Plug in or pair an Xbox controller and press any button so the browser detects it, or use the keyboard (press `?` or `H` for the controls panel).
 
 ### Single-file build
-`node build.mjs` bundles everything (needs esbuild; set `ESBUILD` to its path) into `out/PlaneGame_play.html`, one self-contained file that runs from `file://`. `NO_MUSIC=1 node build.mjs` skips the music.
+`npm install` once, then `npm run build` (or `node build.mjs`) bundles everything with the esbuild from `node_modules` (or set `ESBUILD` to another binary) into `out/PlaneGame_play.html`, one self-contained file that runs from `file://`. `NO_MUSIC=1 node build.mjs` skips the music.
 
 ### Tests
-`node test.mjs` and the `qa/` scripts run headless checks with headless Chrome (puppeteer-core).
+`npm test` builds and then runs `test.mjs`, which does the headless behaviour checks in Chrome via puppeteer-core. It prints `N/N checks passed` and exits 1 on any failed check or page error. The `qa/` scripts use the same setup. Chrome defaults to `/usr/bin/google-chrome`; set `CHROME=/path/to/chrome` to use another. The music rounds need the rendered loops in `audio/music/out/`, which is build output and not in git, so a fresh clone skips them and prints a `SKIP` line.
 
 See [TECHNICAL.md](TECHNICAL.md) for controls, systems, and implementation notes, plus the design docs (`SKY_DESIGN.md`, `LIFE_DESIGN.md`, `STYLE_GUIDE.md`, `VEHICLES_ROADMAP.md`).
 

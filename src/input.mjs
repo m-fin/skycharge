@@ -4,13 +4,19 @@ const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, VIEW: 8, MENU:
 const dz = (v) => Math.abs(v) < DEADZONE ? 0 : Math.sign(v) * (Math.abs(v) - DEADZONE) / (1 - DEADZONE);
 function stick(x, y) { const m = Math.hypot(x, y); if (m < DEADZONE) return [0, 0]; const k = Math.min(1, (m - DEADZONE) / (1 - DEADZONE)) / m; return [x * k, y * k]; }
 
+const CTRL_GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyC', 'KeyV', 'KeyB', 'KeyR', 'KeyP', 'KeyH']);
+
 export function createInput({ toast, onActivate = () => {} }) {
-  const keys = new Set(), queued = [], prev = [];
+  const keys = new Set(), queued = [], prev = []; let padKey = null;
   addEventListener('pointerdown', () => onActivate());
   const KEYACT = { KeyC: 'chill', KeyV: 'vehicle', KeyB: 'view', KeyR: 'respawn', KeyP: 'pause', Slash: 'panel', KeyH: 'panel', Escape: 'close', Enter: 'enter', NumpadEnter: 'enter', ArrowUp: 'menuUp', ArrowDown: 'menuDown', ArrowLeft: 'menuLeft', ArrowRight: 'menuRight' };
   addEventListener('keydown', (e) => {
     onActivate();
     if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+    // Ctrl is 'descend', so Ctrl + a flight / action key is normal play: keep the browser from treating it as a shortcut
+    // (Ctrl+S save, Ctrl+D bookmark, Ctrl+P print, Ctrl+R reload, Ctrl+H history, Ctrl+E search...). Chrome never lets a
+    // page block Ctrl+W / Ctrl+T / Ctrl+N; Space descends too and is the safe key for that.
+    if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && CTRL_GAME_KEYS.has(e.code)) e.preventDefault();
     if ((!e.repeat || e.code.startsWith('Arrow')) && (KEYACT[e.code] || e.key === '?')) queued.push(e.key === '?' ? 'panel' : KEYACT[e.code]);
     keys.add(e.code);
   });
@@ -20,7 +26,10 @@ export function createInput({ toast, onActivate = () => {} }) {
   const k = (c) => keys.has(c) ? 1 : 0;
   function poll() {
     const out = { pitch: 0, roll: 0, yaw: 0, up: 0, down: 0, lookX: 0, lookY: 0, flying: false, pressed: queued.splice(0), pad: false };
-    const gp = navigator.getGamepads ? [...navigator.getGamepads()].find((g) => g && g.connected) : null;
+    // prefer a pad with the standard (Xbox-style) mapping: some setups list a non-standard device (a wheel, a virtual pad) first
+    const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter((g) => g && g.connected) : [], gp = pads.find((g) => g.mapping === 'standard') || pads[0] || null;
+    // a different pad (or none): forget held-button state, so a button held through a disconnect isn't swallowed on reconnect
+    const gpKey = gp ? gp.index + ':' + gp.id : null; if (gpKey !== padKey) { prev.length = 0; padKey = gpKey; }
     if (gp) {
       out.pad = true; const a = gp.axes, b = gp.buttons, val = (i) => (b[i] ? (typeof b[i] === 'object' ? b[i].value : b[i]) : 0), down = (i) => !!(b[i] && (b[i].pressed || b[i].value > 0.5));
       const [lx, ly] = stick(a[0] || 0, a[1] || 0), [rx, ry] = stick(a[2] || 0, a[3] || 0);

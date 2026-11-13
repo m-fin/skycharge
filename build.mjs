@@ -4,8 +4,8 @@
 // masters (mono 44.1 kHz, CBR 96 kbps, LAME gapless header) next to the OGGs in audio/music/out/ when missing or older
 // than the WAVs. If ffmpeg or the MP3s aren't available, the OGGs are embedded instead. NO_MUSIC=1 skips embedding.
 import { execFileSync } from 'child_process'; import fs from 'fs';
-const ESBUILD = [process.env.ESBUILD, '/home/box/.npm/_npx/beb367dfa21eb3f5/node_modules/.bin/esbuild', '/workspace/games/xbox-sideload/tools/node_modules/esbuild/bin/esbuild'].find((p) => p && fs.existsSync(p));
-if (!ESBUILD) throw new Error('esbuild not found: set ESBUILD=/path/to/esbuild');
+const ESBUILD = [process.env.ESBUILD, 'node_modules/.bin/esbuild', '/workspace/games/xbox-sideload/tools/node_modules/esbuild/bin/esbuild'].find((p) => p && fs.existsSync(p));
+if (!ESBUILD) throw new Error('esbuild not found: run npm install, or set ESBUILD=/path/to/esbuild');
 fs.mkdirSync('out', { recursive: true });
 execFileSync(ESBUILD, ['src/main.mjs', '--bundle', '--format=iife', '--minify', '--target=es2020', '--legal-comments=none', '--outfile=out/.bundle.js'], { stdio: 'inherit' });
 const js = fs.readFileSync('out/.bundle.js', 'utf8').replace(/<\/script/gi, '<\\/script'); fs.unlinkSync('out/.bundle.js');

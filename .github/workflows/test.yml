@@ -1,0 +1,19 @@
+name: Test
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # headless Chrome (preinstalled on ubuntu-latest at /usr/bin/google-chrome) with SwiftShader WebGL.
+      # The music rounds skip: the rendered loops in audio/music/out/ aren't in git.
+      - run: npm test

@@ -285,7 +285,7 @@ export function createAudio(ctx, opts = {}) {
     if (typeof AudioBuffer !== 'undefined' && src instanceof AudioBuffer) return src;
     let ab = src;
     if (ArrayBuffer.isView(src)) ab = src.buffer.slice(src.byteOffset, src.byteOffset + src.byteLength);   // e.g. esbuild binary loader
-    if (typeof src === 'string') { const r = await fetch(src); if (!r.ok) throw new Error(r.status + ' ' + src); ab = await r.arrayBuffer(); }
+    if (typeof src === 'string') ab = await encodedBytes(src); // XHR first (EdgeHTML ms-appx has no fetch for package files), fetch fallback
     return await new Promise((res, rej) => { const p = ctx.decodeAudioData(ab.slice ? ab.slice(0) : ab, res, rej); if (p && p.then) p.then(res, rej); });
   }
   function startLoop(key) {

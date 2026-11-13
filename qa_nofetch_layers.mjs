@@ -1,7 +1,7 @@
 // QA: weather layers must load on the package with fetch() removed (EdgeHTML ms-appx has no fetch for package files).
-import puppeteer from '/workspace/crave-lab/tools/cdp/node_modules/puppeteer-core/lib/puppeteer/puppeteer-core.js';
+import puppeteer from 'puppeteer-core';
 const URL = process.argv[2] || 'file:///tmp/qa_1082_pkg/index.html';
-const browser = await puppeteer.launch({ protocolTimeout: 600000, executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage', '--autoplay-policy=no-user-gesture-required', '--allow-file-access-from-files'] });
+const browser = await puppeteer.launch({ protocolTimeout: 600000, executablePath: process.env.CHROME || '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage', '--autoplay-policy=no-user-gesture-required', '--allow-file-access-from-files'] });
 const p = await browser.newPage(); const errs = []; const fetchCalls = [];
 p.on('pageerror', (e) => errs.push(e.message));
 await p.exposeFunction('__qaFetch', (u) => fetchCalls.push(String(u)));

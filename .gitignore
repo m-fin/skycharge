@@ -1,6 +1,16 @@
 # deps / build output
 node_modules/
 out/
+# `out/` also matches audio/music/out/. Track only these committed tracks.
+!audio/music/out/
+audio/music/out/*
+!audio/music/out/cabin_chill_loop.mp3
+!audio/music/out/flight_theme_loop.mp3
+!audio/music/out/xbox22k/
+audio/music/out/xbox22k/*
+!audio/music/out/xbox22k/weather_cloudy_layer.wav
+!audio/music/out/xbox22k/weather_fog_layer.wav
+!audio/music/out/xbox22k/weather_rain_layer.wav
 dist/
 *.tgz
 *.zip
@@ -15,6 +25,11 @@ dist/
 *.p12
 *.pem
 *.key
+# Xbox pack intermediates (makemsix build tree, patched game copy)
+xbox/build/
+xbox/.tools/
+__pycache__/
+*.pyc
 .env
 .env.*
 # renders / video / QA captures

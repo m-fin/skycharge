@@ -1,9 +1,13 @@
 // node test.mjs  -> headless behaviour checks against out/PlaneGame_play.html (no screenshots)
-import puppeteer from '/workspace/crave-lab/tools/cdp/node_modules/puppeteer-core/lib/puppeteer/puppeteer-core.js';
+import puppeteer from 'puppeteer-core';
 import path from 'path'; import fs from 'fs'; import http from 'http';
-const browser = await puppeteer.launch({ protocolTimeout: 600000, executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage', '--window-size=640,360'] });
+const browser = await puppeteer.launch({ protocolTimeout: 600000, executablePath: process.env.CHROME || '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage', '--window-size=640,360'] });
 // GAME=/path/to/www-legacy/index.html runs the same checks against the legacy r162 Xbox bundle (round 6, the single-file music embed, is skipped there)
 const GAME = process.env.GAME ? path.resolve(process.env.GAME) : path.resolve('out/PlaneGame_play.html'), LEGACY = !!process.env.GAME;
+// Music rounds (6 and the weather-music part of 8) need the rendered loops in audio/music/out/, which are build output and
+// not in git. Without them (fresh clone, CI) those rounds are reported as skipped instead of crashing the run.
+const MUSIC = !LEGACY && fs.existsSync('audio/music/out') && fs.existsSync(GAME) && /window\.__SKYCHARGE_MUSIC=/.test(fs.readFileSync(GAME, 'utf8'));
+if (!LEGACY && !MUSIC) console.log('SKIP music rounds: no audio/music/out/ or no music embedded in the build');
 try {
   const page = await browser.newPage(); const errs = []; page.on('pageerror', (e) => errs.push(e.message));
   await page.evaluateOnNewDocument(fs.readFileSync('test_audio_mock.js', 'utf8'));
@@ -161,7 +165,7 @@ try {
   const r5 = await page.evaluate(() => ({ glider_restored_after_reload: { pass: pg.G.vehicle === 'glider' && pg.progress.lastVehicle === 'glider' && document.getElementById('veh').textContent.includes('GLIDER') } }));
   // ---- round 6: music loops (embedded in the single file; http loader .ogg -> .mp3; quiet fallback when decoding fails)
   const r6 = {}, ok6 = (k, c, d = {}) => (r6[k] = { pass: !!c, ...d });
-  if (!LEGACY) {
+  if (MUSIC) {
   { const htmlTxt = fs.readFileSync('out/PlaneGame_play.html', 'utf8'), m = htmlTxt.match(/window\.__SKYCHARGE_MUSIC=(\{.*?\});<\/script>/s), emb = m ? JSON.parse(m[1]) : null;
     const det = emb ? Object.fromEntries(Object.entries(emb).map(([k, v]) => [k, { type: v.type, file: v.file, bytes: v.bytes, b64ok: Buffer.from(v.b64, 'base64').equals(fs.readFileSync('audio/music/out/' + v.file)) }])) : null;
     ok6('music_embedded_in_build', det && ['cabin', 'flight'].every((k) => det[k] && det[k].b64ok && det[k].type === 'audio/mpeg'), { det, htmlMB: +(fs.statSync('out/PlaneGame_play.html').size / 1048576).toFixed(2) }); }
@@ -183,14 +187,16 @@ try {
       if (!f.startsWith(process.cwd()) || (blockOgg && f.endsWith('.ogg')) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { w.writeHead(404); return w.end(); }
       w.writeHead(200, { 'Content-Type': { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg' }[path.extname(f)] || 'application/octet-stream' }); fs.createReadStream(f).pipe(w); });
     srv.listen(0, '127.0.0.1', () => res(srv)); });
-  for (const [name, blockOgg, want] of [['music_http_loader_ogg_first', false, 'ogg'], ['music_http_loader_falls_back_to_mp3', true, 'mp3']]) {
+  // the .ogg loops are local build output (git has only the MP3s): without them the ogg-first case can't run
+  const HAS_OGG = ['cabin_chill_loop', 'flight_theme_loop'].every((n) => fs.existsSync(`audio/music/out/${n}.ogg`)); if (!HAS_OGG) console.log('SKIP music_http_loader_ogg_first: no .ogg loops in audio/music/out/');
+  for (const [name, blockOgg, want] of [['music_http_loader_ogg_first', false, 'ogg'], ['music_http_loader_falls_back_to_mp3', true, 'mp3']].filter(([n]) => HAS_OGG || n !== 'music_http_loader_ogg_first')) {
     const srv = await serve(blockOgg), p3 = await browser.newPage(); const e3 = []; p3.on('pageerror', (e) => e3.push(e.message));
     try { await p3.goto(`http://127.0.0.1:${srv.address().port}/index.html?manual=1&w=320&h=180`); await p3.waitForFunction(() => window.pg && window.pg.ready, { timeout: 60000 });
       await p3.evaluate(() => dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyZ' }))); await p3.waitForFunction(() => pg.music, { timeout: 60000 });
       const st = await p3.evaluate(() => ({ music: pg.music, loops: pg.audio.state().music, embedded: !!window.__SKYCHARGE_MUSIC }));
       ok6(name, st.music.cabin && st.music.flight && st.music.source === want && st.loops.cabin && st.loops.flight && !st.embedded && !e3.length, { st, e3 });
     } finally { await p3.close(); srv.close(); } }
-  } // !LEGACY
+  } // MUSIC
   // ---- round 7 (1.0.7): per-vehicle interiors, roadster + sky scooter (wheels + unlimited air jets), seaplane on any water,
   // skycharger stations with cable + battery bar, Bitcoin coins, dock ring drawn over the water
   await page.reload(); await page.waitForFunction(() => window.pg && window.pg.ready);
@@ -260,7 +266,9 @@ try {
   });
   // weather music (real decoder, embedded build only): layers load, mix while weather is on, crossfade, MP3 loop window
   const r8m = {};
-  if (!LEGACY) { const p4 = await browser.newPage(); const e4 = []; p4.on('pageerror', (e) => e4.push(e.message));
+  // weather layers are embedded only when audio/music/out/weather_<k>_layer.wav exist (git has just the Xbox 22 kHz copies in xbox22k/)
+  const WX_MUSIC = MUSIC && /"rain":\{"type"/.test(fs.readFileSync(GAME, 'utf8')); if (MUSIC && !WX_MUSIC) console.log('SKIP weather music: no weather layers embedded in the build');
+  if (WX_MUSIC) { const p4 = await browser.newPage(); const e4 = []; p4.on('pageerror', (e) => e4.push(e.message));
     await p4.goto('file://' + GAME + '?manual=1&w=320&h=180'); await p4.waitForFunction(() => window.pg && window.pg.ready);
     await p4.evaluate(() => dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyZ' }))); await p4.waitForFunction(() => pg.music && pg.music.weather, { timeout: 90000 });
     const m = await p4.evaluate(async () => { const A = pg.audio, s0 = A.state(); pg.setWeather('rain'); pg.step(2); await new Promise((r) => setTimeout(r, 300)); const s1 = A.state();
@@ -273,4 +281,7 @@ try {
     await p4.close(); }
   Object.assign(r, r2.out, r3, r4, r5, r6, r7, r8, r8m);
   console.log(JSON.stringify(r, null, 1)); console.log(errs.length ? 'PAGE ERRORS: ' + errs.join(' | ') : 'no page errors');
+  const checks = Object.entries(r).filter(([, v]) => v && typeof v === 'object' && 'pass' in v), failed = checks.filter(([, v]) => !v.pass).map(([k]) => k);
+  console.log(`${checks.length - failed.length}/${checks.length} checks passed` + (failed.length ? ' · FAILED: ' + failed.join(', ') : ''));
+  if (failed.length || errs.length) process.exitCode = 1;
 } finally { await browser.close(); }

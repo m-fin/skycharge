@@ -16,7 +16,7 @@ import { createInput } from './input.mjs';
 const q = new URLSearchParams(location.search), seed = +(q.get('seed') || 1), manual = q.get('manual') === '1';
 const FW = +q.get('w') || 0, FH = +q.get('h') || 0, DT = 1 / 60;
 if (q.get('hud') === '0') document.body.classList.add('nohud'); if (manual) document.body.classList.add('manual');
-const $ = (id) => document.getElementById(id);
+const $els = {}, $ = (id) => $els[id] || ($els[id] = document.getElementById(id)); // elements are static: look each up once
 
 // ---- renderer / scene
 const canvas = $('c'), renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: manual });
@@ -71,7 +71,10 @@ const climbNorm = () => Math.max(-1, Math.min(1, climbEMA / (G.vehicle === 'glid
 // hull-on-water contact: true only while the seaplane's floats are on the water (floating / taxiing / takeoff run). Plane water contact is a crash.
 const hullOnWater = () => G.vehicle === 'seaplane' && !G.seaplane.crashed && !!G.seaplane.onWater;
 function initAudio() {
-  if (audio) return; const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+  // Chrome only lets a real user gesture (key, click, tap) start audio; a controller button press isn't one. If the context
+  // was made on a pad press it stays 'suspended', so every later key / click / button press tries to resume it.
+  if (audio) { const c = audio.ctx; if (c && c.state === 'suspended' && c.resume) c.resume().catch(() => {}); return; }
+  const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
   try { const ctx = new AC(); if (ctx.resume) ctx.resume(); audio = createAudio(ctx, { autoCues: true, lazyLayers: !!window.__XBOX || /[?&]lazyaudio=1/.test(location.search) }); /* BUG-021: decode only the current weather layer on Xbox */ life.setAudio(ctx); applyAudioSettings(); } catch (e) { audio = null; return; }
   loadMusic().then((r) => { musicStatus = r; }).catch(() => { musicStatus = { cabin: false, flight: false, source: 'error' }; });
 }
@@ -321,21 +324,22 @@ function updateFx(dt) {
   else { fx.hideCable(); cableK = 0; cableVeh = null; }
   if (v.charging && !v.crashed && !inCab()) fx.setBar(_jp.set(v.pos.x, v.pos.y + barH, v.pos.z), v.battery, k === 'blimp' ? 2 : k === 'scooter' ? 0.7 : 1); else fx.hideBar();
 }
-function syncMeshes() {
+function syncMeshes(dt = DT) {
+  const spin = Math.min(dt, 0.1) * 60; // props turn per second, not per rendered frame (was 2.4x faster on a 144 Hz screen)
   const p = G.plane, b = G.blimp, gl = G.glider, sp = G.seaplane;
   planeG.visible = G.vehicle === 'plane' && !p.crashed; planeG.position.copy(p.pos); planeG.quaternion.copy(p.quat);
-  planeG.userData.prop.rotation.z += (p.battery > 0 ? p.throttle : 0) * 1.4 + 0.02;
+  planeG.userData.prop.rotation.z += ((p.battery > 0 ? p.throttle : 0) * 1.4 + 0.02) * spin;
   gliderG.visible = G.vehicle === 'glider' && !gl.crashed; gliderG.position.copy(gl.pos); gliderG.quaternion.copy(gl.quat);
   seaG.visible = G.vehicle === 'seaplane' && !sp.crashed; seaG.position.copy(sp.pos); seaG.quaternion.copy(sp.quat);
-  seaG.userData.prop.rotation.z += (sp.battery > 0 ? sp.throttle : 0) * 1.3 + 0.02;
+  seaG.userData.prop.rotation.z += ((sp.battery > 0 ? sp.throttle : 0) * 1.3 + 0.02) * spin;
   world.thermalGroup.visible = G.vehicle === 'glider';
   blimpG.visible = G.vehicle === 'blimp'; blimpG.position.set(b.pos.x, b.pos.y + b.bob, b.pos.z); blimpG.rotation.set(b.tilt, -b.yaw, b.bank, 'YXZ');
-  for (const pr of blimpG.userData.props) pr.rotation.z += Math.abs(b.thrust) * 0.5 + 0.03;
+  for (const pr of blimpG.userData.props) pr.rotation.z += (Math.abs(b.thrust) * 0.5 + 0.03) * spin;
   for (const k of ['roadster', 'scooter']) { const h = G[k], g = MESH[k], u = g.userData; g.visible = G.vehicle === k; if (!g.visible) continue;
     g.position.set(h.pos.x, h.pos.y + h.bob, h.pos.z); g.rotation.set(h.pitchVis, -h.yaw, h.rollVis + h.lean, 'YXZ');
     for (const w of u.wheels) if (!u.front.includes(w)) w.rotation.x = h.wheel; for (const f of u.front) f.rotation.set(f === u.fork ? 0 : h.wheel, -h.steer * 0.45, 0, 'YXZ'); if (u.fork) u.wheels[0].rotation.x = h.wheel;
     if (u.bars) u.bars.rotation.y = -h.steer * 0.45; if (k === 'scooter') scootCab.bars.rotation.y = -h.steer * 0.45;
-    if (u.plate) u.plate.rotation.x += ((h.jets.rear > 0.1 ? 1.5 : 0) - u.plate.rotation.x) * 0.2; }
+    if (u.plate) u.plate.rotation.x += ((h.jets.rear > 0.1 ? 1.5 : 0) - u.plate.rotation.x) * (1 - Math.pow(0.8, spin)); }
   for (const [g, cab] of [[planeG, planeCab], [blimpG, blimpCab], [seaG, seaCab], [gliderG, gliderCab], [roadG, roadCab], [scootG, scootCab]]) { const ic = inCab(); cab.group.visible = ic; for (const c of g.children) if (c !== cab.group) c.visible = !ic; }
   const cv = cur(); if (winged() && cv.crashed) { const t = cv.crashed.t; burst.position.copy(cv.crashed.pos); burst.scale.setScalar(2 + t * 14); burst.material.opacity = Math.max(0, 0.85 - t * 0.5); burst.material.color.setHex(cv.crashed.why === 'splash' ? 0xd8f0ff : 0xf7931a); } else burst.material.opacity = 0;
 }
@@ -344,29 +348,32 @@ function syncMeshes() {
 const mapCtx = $('map').getContext('2d');
 let gaugeT = 0;
 function nearestThermal(x, z) { let b = world.thermals[0], bd = 1e9; for (const t of world.thermals) { const d = Math.hypot(t.x - x, t.z - z); if (d < bd) { bd = d; b = t; } } return b; }
+// HUD writes go through these: they touch the DOM only when the value changed. Setting textContent / innerHTML to the
+// same string still replaces the nodes and invalidates layout, ~30 times a frame (the mission prompt re-parsed its HTML every frame).
+const T = (el, v) => { v = String(v); if (el.__t !== v) { el.__t = v; el.textContent = v; } }, HT = (el, v) => { if (el.__h !== v) { el.__h = v; el.innerHTML = v; } }, CL = (el, v) => { if (el.className !== v) el.className = v; };
 function updateHUD(dt) {
   const v = cur(), gr = world.groundAt(v.pos.x, v.pos.z), hd = headingOf(v), kt = P.settings.units === 'kt', spd = (winged() ? v.v : Math.abs(v.v)) * (kt ? 1.944 : 3.6), gld = G.vehicle === 'glider', sea = G.vehicle === 'seaplane';
-  $('spdu').textContent = kt ? 'kt' : 'km/h'; $('coins').textContent = P.coins; $('found').textContent = `${P.collected.length}/${coins.total} found`;
-  $('veh').textContent = LABEL[G.vehicle]; document.body.classList.toggle('nobat', gld);
-  $('spd').textContent = Math.round(spd); $('alt').textContent = Math.round(v.pos.y); $('agl').textContent = `AGL ${Math.max(0, Math.round(v.pos.y - gr.h - ({ plane: PLANE.gear, blimp: BLIMP.clear, glider: GLIDER.clear, seaplane: SEAPLANE.float, roadster: HOVER.roadster.clear, scooter: HOVER.scooter.clear })[G.vehicle]))}`;
-  { const c = climbNorm(), el = $('vsibar'); $('vsi').textContent = (climbEMA >= 0 ? '▲ +' : '▼ ') + climbEMA.toFixed(1); el.className = c < 0 ? 'sink' : ''; el.style.left = (c < 0 ? 50 + c * 50 : 50) + '%'; el.style.width = Math.abs(c) * 50 + '%'; }
-  $('hdg').textContent = String(Math.round(((hd * 180 / Math.PI) % 360 + 360) % 360) % 360).padStart(3, '0');
-  const hov = hovering(), thr = gld ? 0 : winged() ? v.throttle : hov ? Math.max(v.jets.rear, v.jets.front, v.jets.left, v.jets.right, v.jets.down) : Math.abs(v.thrust); $('thr').textContent = gld ? 'no motor' : hov ? 'AIR ∞' : Math.round(thr * 100) + '%'; $('thrbar').firstChild.style.width = thr * 100 + '%';
-  $('bat').textContent = gld ? 'no battery' : Math.round(v.battery) + '%'; $('batbar').firstChild.style.width = v.battery + '%'; $('batbar').classList.toggle('low', v.battery < 20);
+  T($('spdu'), kt ? 'kt' : 'km/h'); T($('coins'), P.coins); T($('found'), `${P.collected.length}/${coins.total} found`);
+  T($('veh'), LABEL[G.vehicle]); document.body.classList.toggle('nobat', gld);
+  T($('spd'), Math.round(spd)); T($('alt'), Math.round(v.pos.y)); T($('agl'), `AGL ${Math.max(0, Math.round(v.pos.y - gr.h - ({ plane: PLANE.gear, blimp: BLIMP.clear, glider: GLIDER.clear, seaplane: SEAPLANE.float, roadster: HOVER.roadster.clear, scooter: HOVER.scooter.clear })[G.vehicle]))}`);
+  { const c = climbNorm(), el = $('vsibar'); T($('vsi'), (climbEMA >= 0 ? '▲ +' : '▼ ') + climbEMA.toFixed(1)); CL(el, c < 0 ? 'sink' : ''); el.style.left = (c < 0 ? 50 + c * 50 : 50) + '%'; el.style.width = Math.abs(c) * 50 + '%'; }
+  T($('hdg'), String(Math.round(((hd * 180 / Math.PI) % 360 + 360) % 360) % 360).padStart(3, '0'));
+  const hov = hovering(), thr = gld ? 0 : winged() ? v.throttle : hov ? Math.max(v.jets.rear, v.jets.front, v.jets.left, v.jets.right, v.jets.down) : Math.abs(v.thrust); T($('thr'), gld ? 'no motor' : hov ? 'AIR ∞' : Math.round(thr * 100) + '%'); $('thrbar').firstChild.style.width = thr * 100 + '%';
+  T($('bat'), gld ? 'no battery' : Math.round(v.battery) + '%'); $('batbar').firstChild.style.width = v.battery + '%'; $('batbar').classList.toggle('low', v.battery < 20);
   const n = world.nearest(v.pos.x, v.pos.z), wp = G.waypoint != null ? world.stations[G.waypoint] : null;
   if (wp && Math.hypot(wp.padX - v.pos.x, wp.padZ - v.pos.z) < 120) G.waypoint = null;
   const nth = gld ? nearestThermal(v.pos.x, v.pos.z) : null;
   const tgt = G.mission && G.target ? { x: G.target.x, z: G.target.z, name: '🎯 ' + G.target.label } : wp ? { x: wp.padX, z: wp.padZ, name: '📍 ' + wp.name } : gld ? { x: nth.x, z: nth.z, name: '🌀 Thermal' } : hovering() ? { x: n.st.hoverSpawn.x, z: n.st.hoverSpawn.z, name: '⚡ ' + n.st.name } : sea ? { x: DOCK.chargeX, z: DOCK.chargeZ, name: '⚓ ' + DOCK.name } : { x: n.st.padX, z: n.st.padZ, name: '⚡ ' + n.st.name };
   const td = Math.hypot(tgt.x - v.pos.x, tgt.z - v.pos.z), brg = Math.atan2(tgt.x - v.pos.x, -(tgt.z - v.pos.z));
-  $('navname').textContent = tgt.name; $('navd').textContent = td > 1000 ? (td / 1000).toFixed(1) + ' km' : Math.round(td) + ' m';
+  T($('navname'), tgt.name); T($('navd'), td > 1000 ? (td / 1000).toFixed(1) + ' km' : Math.round(td) + ' m');
   document.body.classList.toggle('mission', !!G.mission);
-  const ob = $('obj'); if (G.mission) { ob.innerHTML = `<b>🎯 ${G.mission.def.name.toUpperCase()}</b> ${G.objective}`; ob.className = 'box show'; } else ob.className = 'box';
+  const ob = $('obj'); if (G.mission) { HT(ob, `<b>🎯 ${G.mission.def.name.toUpperCase()}</b> ${G.objective}`); CL(ob, 'box show'); } else CL(ob, 'box');
   const mh = !G.mission && !G.chill ? missionHere() : null, pr = $('prompt');
-  if (mh && (mh.here || mh.other)) { const d = mh.here; pr.className = 'box show';
-    pr.innerHTML = d ? (d.minStart && v.battery < d.minStart ? `⚡ Charge to ${d.minStart}% to start <b>${d.name}</b> (now ${Math.floor(v.battery)}%)` : `<kbd>B</kbd> / <kbd>Enter</kbd> start <b>${d.name}</b> · +${P.completed[d.id] ? Math.round(d.reward / 4) : d.reward} ₿${P.best[d.id] != null ? ` · best ${fmt(P.best[d.id])}` : ''}`) : `<b>${mh.other.name}</b> starts here with the ${mh.other.vehicle} — <kbd>X</kbd> / <kbd>V</kbd> to switch`;
-  } else pr.className = 'box';
+  if (mh && (mh.here || mh.other)) { const d = mh.here; CL(pr, 'box show');
+    HT(pr, d ? (d.minStart && v.battery < d.minStart ? `⚡ Charge to ${d.minStart}% to start <b>${d.name}</b> (now ${Math.floor(v.battery)}%)` : `<kbd>B</kbd> / <kbd>Enter</kbd> start <b>${d.name}</b> · +${P.completed[d.id] ? Math.round(d.reward / 4) : d.reward} ₿${P.best[d.id] != null ? ` · best ${fmt(P.best[d.id])}` : ''}`) : `<b>${mh.other.name}</b> starts here with the ${mh.other.vehicle} — <kbd>X</kbd> / <kbd>V</kbd> to switch`);
+  } else CL(pr, 'box');
   if (flashT > 0) flashT = Math.max(0, flashT - dt); $('flash').style.opacity = (flashT / 0.45 * 0.5).toFixed(3);
-  const pp = $('popup'); if (popT > 0) { popT = Math.max(0, popT - dt); pp.textContent = popTxt; pp.style.opacity = Math.min(1, popT * 2).toFixed(2); pp.style.transform = `translate(-50%, ${(-40 * (1.1 - popT)).toFixed(1)}px)`; } else pp.style.opacity = 0;
+  const pp = $('popup'); if (popT > 0) { popT = Math.max(0, popT - dt); T(pp, popTxt); pp.style.opacity = Math.min(1, popT * 2).toFixed(2); pp.style.transform = `translate(-50%, ${(-40 * (1.1 - popT)).toFixed(1)}px)`; } else pp.style.opacity = 0;
   $('arrow').style.transform = `rotate(${(brg - hd) * 180 / Math.PI - 90}deg)`;
   let st = null, cls = 'info';
   if (winged() && v.crashed) { st = 'CRASHED — RESPAWNING'; cls = 'warn'; }
@@ -378,9 +385,9 @@ function updateHUD(dt) {
   else if (winged() && !v.grounded && v.stalled) { st = 'STALL — NOSE DOWN, ADD THROTTLE'; cls = 'warn'; }
   else if (sea && v.grounded && world.nearDock(v.pos.x, v.pos.z, 22) && v.v >= 6) { st = 'AT THE DOCK — SLOW DOWN TO CHARGE'; }
   else if (G.vehicle === 'plane' && v.grounded && world.inStation(v.pos.x, v.pos.z) && v.v >= 6) { st = 'ON RUNWAY — SLOW DOWN TO CHARGE'; }
-  const s = $('status'); s.textContent = st || ''; s.className = st ? 'show ' + cls : '';
-  $('chilltxt').textContent = gld ? `${v.grounded ? 'Landed' : v.lift > 0.6 ? 'Circling in rising air' : 'Hands-off glide'} · ${Math.round(spd)} ${kt ? 'kt' : 'km/h'} · ${climbEMA >= 0 ? '▲' : '▼'} ${Math.abs(climbEMA).toFixed(1)} m/s · ${Math.round(v.pos.y)} m`
-    : `${(winged() ? (v.grounded ? (sea ? 'Floating' : 'Parked') : 'Autopilot cruise') : hovering() ? (v.landed ? 'Parked' : 'Hover cruise · air ∞') : (G.ap && G.ap.hold ? 'Hovering' : 'Autopilot drift'))} · ${Math.round(spd)} ${kt ? 'kt' : 'km/h'} · ⚡ ${Math.round(v.battery)}%${v.charging ? ' charging' : ''}`;
+  const s = $('status'); T(s, st || ''); CL(s, st ? 'show ' + cls : '');
+  T($('chilltxt'), gld ? `${v.grounded ? 'Landed' : v.lift > 0.6 ? 'Circling in rising air' : 'Hands-off glide'} · ${Math.round(spd)} ${kt ? 'kt' : 'km/h'} · ${climbEMA >= 0 ? '▲' : '▼'} ${Math.abs(climbEMA).toFixed(1)} m/s · ${Math.round(v.pos.y)} m`
+    : `${(winged() ? (v.grounded ? (sea ? 'Floating' : 'Parked') : 'Autopilot cruise') : hovering() ? (v.landed ? 'Parked' : 'Hover cruise · air ∞') : (G.ap && G.ap.hold ? 'Hovering' : 'Autopilot drift'))} · ${Math.round(spd)} ${kt ? 'kt' : 'km/h'} · ⚡ ${Math.round(v.battery)}%${v.charging ? ' charging' : ''}`);
   if (inCab()) { const at = cockpitAttitude(G.vehicle, v), J = hov ? v.jets : null; /* updateCockpit caps itself at 10 Hz and skips hidden cabs */
     updateCockpit(CAB[G.vehicle] || planeCab, { pitch: at.pitch, roll: at.roll, heading: hd, speed: spd, unit: kt ? 'KT' : 'KM/H', alt: v.pos.y, charge: gld ? 100 : v.battery, charging: !!v.charging, climb: climbEMA, boost: J ? Math.max(J.rear, J.front, J.left, J.right, J.down) : 0 }); }
   // minimap (north up)
@@ -434,6 +441,10 @@ function renderMenu() {
   const s = el.querySelector('.sel'); if (s && s.scrollIntoView) s.scrollIntoView({ block: 'nearest' });
 }
 $('menulist').addEventListener('click', (e) => { const o = e.target.closest('.mo'); if (!o) return; menu.sel = +o.dataset.i; menu.items[menu.sel].act(); if (G.paused) renderMenu(); });
+// Auto-pause when the tab or app is hidden (alt-tab, minimise, Xbox guide): the frame loop stops in a hidden tab but
+// Web Audio doesn't, so the engine kept droning in the background. Opening the pause menu ducks the audio, and you come
+// back paused instead of mid-dive. Manual / test runs (?manual=1) are left alone.
+if (!manual) document.addEventListener('visibilitychange', () => { if (document.hidden && !G.paused) openMenu(); });
 function openMenu() { G.paused = true; $('pause').classList.add('show'); setView('main'); }
 function closeMenu() { G.paused = false; $('pause').classList.remove('show'); }
 function menuAction(a) {
@@ -466,7 +477,7 @@ function frame(dt, inp) {
   if (G.vehicle === 'glider' && inCab()) cockpitBarShift(gliderCab, running ? inp.roll || 0 : 0, running ? inp.pitch || 0 : 0, dt); // 1.0.8.3 (Look): bar follows your stick (+pitch = nose up)
   G.look.x += (inp.lookX - G.look.x) * Math.min(1, dt * 6); G.look.y += (inp.lookY - G.look.y) * Math.min(1, dt * 6);
   if (running) { acc += dt; let n = 0; while (acc >= DT && n < 6) { simTick(inp); acc -= DT; n++; } if (n === 6) acc = 0; }
-  if (running) updateClimb(dt); if (running) life.update(dt, cur().pos); syncMeshes(); updateCamera(dt); updateHUD(dt); syncAudio(); renderer.render(scene, camera);
+  if (running) updateClimb(dt); if (running) life.update(dt, cur().pos); syncMeshes(dt); updateCamera(dt); updateHUD(dt); syncAudio(); renderer.render(scene, camera);
 }
 const merged = () => { const i = input.poll(); if (G.hold) Object.assign(i, G.hold); if (P.settings.invertPitch && winged()) i.pitch = -i.pitch; return i; };
 
@@ -479,14 +490,14 @@ toast(anyProgress ? `Welcome back! ₿ ${P.coins} coins · ${Object.keys(P.compl
 // ---- headless/test hook
 window.pg = {
   G, world, stations: world.stations, THREE, coins, missions, fx, MESH, CAB, weather, weatherNames: WEATHERS, life, setWeather: (n, o) => { const r = weather.set(n, o); syncAudio(); return r; },
-  cam: camera, scn: scene, rnd: renderer, shotFrom(px, py, pz, tx, ty, tz) { syncMeshes(); camera.position.set(px, py, pz); camera.lookAt(tx, ty, tz); camera.near = 1; camera.updateProjectionMatrix(); for (let i = 0; i < 4; i++) weather.update(0.5, cur().pos); renderer.render(scene, camera); return true; },
+  cam: camera, scn: scene, rnd: renderer, shotFrom(px, py, pz, tx, ty, tz) { syncMeshes(0); camera.position.set(px, py, pz); camera.lookAt(tx, ty, tz); camera.near = 1; camera.updateProjectionMatrix(); for (let i = 0; i < 4; i++) weather.update(0.5, cur().pos); renderer.render(scene, camera); return true; },
   get audio() { return audio; }, initAudio() { initAudio(); return !!audio; }, get music() { return musicStatus; },
   get progress() { return P; }, save() { return persist(); }, reload() { P = load(); applyProgress(); return P; }, resetProgress() { resetProgress(); }, menuOpen() { openMenu(); }, menuItems() { return menu.items.map((x) => x.header || x.info || x.label); },
   startMission(id) { const d = missions.defs.find((x) => x.id === id), s0 = world.stations[d.start]; respawn(d.vehicle, s0); const v = cur(); v.battery = 100;
     if (d.vehicle === 'blimp') v.pos.y = s0.h + BLIMP.clear; simTick({ ...ZERO }); tryStartMission(); return G.mission ? G.mission.def.id : null; },
   get climb() { return { ms: climbEMA, norm: climbNorm() }; },
-  step(n = 1, inp = {}) { for (let i = 0; i < n; i++) { simTick({ ...ZERO, ...inp }); updateClimb(DT); } life.update(Math.min(0.1, n * DT), cur().pos); syncMeshes(); updateCamera(n * DT); updateHUD(n * DT); return this.info(); },
-  render() { snapCam = true; syncMeshes(); updateCamera(0); updateHUD(0); renderer.render(scene, camera); return true; },
+  step(n = 1, inp = {}) { for (let i = 0; i < n; i++) { simTick({ ...ZERO, ...inp }); updateClimb(DT); } life.update(Math.min(0.1, n * DT), cur().pos); syncMeshes(n * DT); updateCamera(n * DT); updateHUD(n * DT); return this.info(); },
+  render() { snapCam = true; syncMeshes(0); updateCamera(0); updateHUD(0); renderer.render(scene, camera); return true; },
   press(a) { handle(a); return this.info(); },
   frame(dt = DT) { frame(dt, merged()); return this.info(); }, // one real frame through the input path (gamepad/keyboard)
   chill(on = true) { setChill(on, true); }, lookCaps: LOOK_CAPS, view(mode = 'cockpit') { setCockpit(mode === 'cockpit', true); return mode; }, vehicle(kind) { for (let k = 0; k < 6 && kind !== G.vehicle; k++) switchVehicle(); }, respawn(i = 0, kind = G.vehicle) { return respawn(kind, world.stations[i]).name; },
@@ -514,7 +525,7 @@ function prewarm() {
   for (const [o, v, fc] of saved) { o.visible = v; o.frustumCulled = fc; }
   if (renderer.info && renderer.info.programs) console.log('prewarm: ' + renderer.info.programs.length + ' programs');
 }
-prewarm(); syncMeshes();
+prewarm(); syncMeshes(0);
 if (!manual) { let last = performance.now(); const loop = (now) => { const dt = Math.min(0.1, (now - last) / 1000); last = now; frame(dt, merged()); requestAnimationFrame(loop); }; requestAnimationFrame(loop); }
 else { pg.render(); }
 document.title = document.title + (manual ? ' [manual]' : '');

@@ -1,7 +1,7 @@
 // node test.mjs  -> headless behaviour checks against out/PlaneGame_play.html (no screenshots)
-import puppeteer from '/workspace/crave-lab/tools/cdp/node_modules/puppeteer-core/lib/puppeteer/puppeteer-core.js';
+import puppeteer from 'puppeteer-core';
 import path from 'path'; import fs from 'fs'; import http from 'http';
-const browser = await puppeteer.launch({ protocolTimeout: 600000, executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage', '--window-size=640,360'] });
+const browser = await puppeteer.launch({ protocolTimeout: 600000, executablePath: process.env.CHROME || '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage', '--window-size=640,360'] });
 // GAME=/path/to/www-legacy/index.html runs the same checks against the legacy r162 Xbox bundle (round 6, the single-file music embed, is skipped there)
 const GAME = process.env.GAME ? path.resolve(process.env.GAME) : path.resolve('out/PlaneGame_play.html'), LEGACY = !!process.env.GAME;
 try {

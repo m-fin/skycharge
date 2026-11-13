@@ -1,0 +1,10 @@
+{
+  "name": "skycharge-xbox-pack",
+  "private": true,
+  "description": "Build tools for the unsigned SKYCHARGE EdgeHTML Xbox package. three 0.162.0 is the WebGL1 bundle esbuild aliases in. Not the game.",
+  "dependencies": {
+    "acorn": "8.15.0",
+    "esbuild": "0.25.12",
+    "three": "0.162.0"
+  }
+}

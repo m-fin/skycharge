@@ -1,6 +1,6 @@
 // node qa/life/perf.mjs [r162] -> per-frame cost and draw calls WITHOUT vs WITH src/life at 6 viewpoints (headless,
 // SwiftShader CPU rendering, 1280x720). updateMs = world.update + life.update JS; renderMs = renderer.render + gl.finish.
-import puppeteer from '/workspace/games/xbox-sideload/tools/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js';
+import puppeteer from 'puppeteer-core';
 import path from 'path'; import fs from 'fs';
 const here = path.dirname(new URL(import.meta.url).pathname), legacy = process.argv[2] === 'r162';
 const VIEWS = {
@@ -11,7 +11,7 @@ const VIEWS = {
   open_sea_low: `const s = L.sailLoops[0]; look(s.x + s.r + 200, 60, s.z, s.x, 0, s.z);`,
   home_field: `const s = H.tq.stations[0]; look(s.padX + 150, s.h + 60, s.padZ + 150, s.padX, s.h, s.padZ);`,
 };
-const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true, protocolTimeout: 600000, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage', ...(legacy ? ['--disable-webgl2', '--disable-es3-apis'] : [])] });
+const b = await puppeteer.launch({ executablePath: process.env.CHROME || '/usr/bin/google-chrome', headless: true, protocolTimeout: 600000, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage', ...(legacy ? ['--disable-webgl2', '--disable-es3-apis'] : [])] });
 const rows = [];
 try { for (const life of [0, 1]) { const p = await b.newPage(); const errs = []; p.on('pageerror', (e) => errs.push(e.message)); await p.setViewport({ width: 1280, height: 720 });
     await p.goto('file://' + here + (legacy ? '/harness_r162.html' : '/harness.html') + `?w=1280&h=720&life=${life}`); await p.waitForFunction(() => window.H && H.ready, { timeout: 120000 });

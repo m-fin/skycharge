@@ -1,0 +1,19 @@
+{
+  "name": "skycharge",
+  "version": "1.0.8",
+  "private": true,
+  "description": "SKYCHARGE: an electric-plane flying game (three.js), single-file web build + Xbox UWP package.",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node build.mjs && node test.mjs",
+    "test:slow": "node build.mjs && node qa_test_slowbox.mjs",
+    "qa:headless": "node qa_headless.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "puppeteer-core": "^25.17.0",
+    "three-r162": "npm:three@0.162.0"
+  },
+  "author": "Matthew \"Frog\" Finley",
+  "license": "UNLICENSED"
+}

@@ -71,7 +71,10 @@ const climbNorm = () => Math.max(-1, Math.min(1, climbEMA / (G.vehicle === 'glid
 // hull-on-water contact: true only while the seaplane's floats are on the water (floating / taxiing / takeoff run). Plane water contact is a crash.
 const hullOnWater = () => G.vehicle === 'seaplane' && !G.seaplane.crashed && !!G.seaplane.onWater;
 function initAudio() {
-  if (audio) return; const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+  // Chrome only lets a real user gesture (key, click, tap) start audio; a controller button press isn't one. If the context
+  // was made on a pad press it stays 'suspended', so every later key / click / button press tries to resume it.
+  if (audio) { const c = audio.ctx; if (c && c.state === 'suspended' && c.resume) c.resume().catch(() => {}); return; }
+  const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
   try { const ctx = new AC(); if (ctx.resume) ctx.resume(); audio = createAudio(ctx, { autoCues: true, lazyLayers: !!window.__XBOX || /[?&]lazyaudio=1/.test(location.search) }); /* BUG-021: decode only the current weather layer on Xbox */ life.setAudio(ctx); applyAudioSettings(); } catch (e) { audio = null; return; }
   loadMusic().then((r) => { musicStatus = r; }).catch(() => { musicStatus = { cabin: false, flight: false, source: 'error' }; });
 }

@@ -4,6 +4,8 @@ const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, VIEW: 8, MENU:
 const dz = (v) => Math.abs(v) < DEADZONE ? 0 : Math.sign(v) * (Math.abs(v) - DEADZONE) / (1 - DEADZONE);
 function stick(x, y) { const m = Math.hypot(x, y); if (m < DEADZONE) return [0, 0]; const k = Math.min(1, (m - DEADZONE) / (1 - DEADZONE)) / m; return [x * k, y * k]; }
 
+const CTRL_GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyC', 'KeyV', 'KeyB', 'KeyR', 'KeyP', 'KeyH']);
+
 export function createInput({ toast, onActivate = () => {} }) {
   const keys = new Set(), queued = [], prev = [];
   addEventListener('pointerdown', () => onActivate());
@@ -11,6 +13,10 @@ export function createInput({ toast, onActivate = () => {} }) {
   addEventListener('keydown', (e) => {
     onActivate();
     if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+    // Ctrl is 'descend', so Ctrl + a flight / action key is normal play: keep the browser from treating it as a shortcut
+    // (Ctrl+S save, Ctrl+D bookmark, Ctrl+P print, Ctrl+R reload, Ctrl+H history, Ctrl+E search...). Chrome never lets a
+    // page block Ctrl+W / Ctrl+T / Ctrl+N; Space descends too and is the safe key for that.
+    if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && CTRL_GAME_KEYS.has(e.code)) e.preventDefault();
     if ((!e.repeat || e.code.startsWith('Arrow')) && (KEYACT[e.code] || e.key === '?')) queued.push(e.key === '?' ? 'panel' : KEYACT[e.code]);
     keys.add(e.code);
   });

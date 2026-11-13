@@ -435,6 +435,10 @@ function renderMenu() {
   const s = el.querySelector('.sel'); if (s && s.scrollIntoView) s.scrollIntoView({ block: 'nearest' });
 }
 $('menulist').addEventListener('click', (e) => { const o = e.target.closest('.mo'); if (!o) return; menu.sel = +o.dataset.i; menu.items[menu.sel].act(); if (G.paused) renderMenu(); });
+// Auto-pause when the tab or app is hidden (alt-tab, minimise, Xbox guide): the frame loop stops in a hidden tab but
+// Web Audio doesn't, so the engine kept droning in the background. Opening the pause menu ducks the audio, and you come
+// back paused instead of mid-dive. Manual / test runs (?manual=1) are left alone.
+if (!manual) document.addEventListener('visibilitychange', () => { if (document.hidden && !G.paused) openMenu(); });
 function openMenu() { G.paused = true; $('pause').classList.add('show'); setView('main'); }
 function closeMenu() { G.paused = false; $('pause').classList.remove('show'); }
 function menuAction(a) {

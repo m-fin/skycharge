@@ -1,8 +1,8 @@
 // node qa/webgl1_smoke.mjs [index.html] -> legacy r162 bundle with WebGL2 disabled (like the Xbox): every weather + vehicle renders, no GL/shader errors
-import puppeteer from '/workspace/crave-lab/tools/cdp/node_modules/puppeteer-core/lib/puppeteer/puppeteer-core.js';
+import puppeteer from 'puppeteer-core';
 import path from 'path'; import fs from 'fs';
 const game = path.resolve(process.argv[2] || '/workspace/games/xbox-sideload/skycharge/www-legacy/index.html');
-const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-webgl2', '--window-size=960,540'] });
+const b = await puppeteer.launch({ executablePath: process.env.CHROME || '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-webgl2', '--window-size=960,540'] });
 const p = await b.newPage(); await p.setViewport({ width: 960, height: 540 }); const errs = [], warn = [];
 p.on('pageerror', (e) => errs.push(e.message)); p.on('console', (m) => { const t = m.text(); if (/error|shader|WebGL|GL_/i.test(t)) warn.push(t.slice(0, 300)); });
 await p.goto('file://' + game + '?manual=1&w=960&h=540'); await p.waitForFunction(() => window.pg && window.pg.ready, { timeout: 120000 });

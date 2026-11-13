@@ -1,9 +1,9 @@
 // node qa/shots.mjs [game.html] -> qa/cabins/*.png (4+2 interiors) and qa/v107/*.png (vehicles, station mid-charge, dock ring, coin, seaplane water)
-import puppeteer from '/workspace/crave-lab/tools/cdp/node_modules/puppeteer-core/lib/puppeteer/puppeteer-core.js';
+import puppeteer from 'puppeteer-core';
 import fs from 'fs'; import path from 'path';
 const game = path.resolve(process.argv[2] || 'out/PlaneGame_play.html'), only = process.argv[3] || '';
 fs.mkdirSync('qa/cabins', { recursive: true }); fs.mkdirSync('qa/v107', { recursive: true }); fs.mkdirSync('qa/v108', { recursive: true });
-const b = await puppeteer.launch({ protocolTimeout: 600000, executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--window-size=1280,720'] });
+const b = await puppeteer.launch({ protocolTimeout: 600000, executablePath: process.env.CHROME || '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--window-size=1280,720'] });
 const p = await b.newPage(); await p.setViewport({ width: 1280, height: 720 }); const errs = []; p.on('pageerror', (e) => errs.push(e.message));
 await p.evaluateOnNewDocument(fs.readFileSync('test_audio_mock.js', 'utf8'));
 await p.goto('file://' + game + '?manual=1&w=1280&h=720&hud=0'); await p.waitForFunction(() => window.pg && window.pg.ready, { timeout: 120000 });

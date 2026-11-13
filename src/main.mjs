@@ -71,7 +71,10 @@ const climbNorm = () => Math.max(-1, Math.min(1, climbEMA / (G.vehicle === 'glid
 // hull-on-water contact: true only while the seaplane's floats are on the water (floating / taxiing / takeoff run). Plane water contact is a crash.
 const hullOnWater = () => G.vehicle === 'seaplane' && !G.seaplane.crashed && !!G.seaplane.onWater;
 function initAudio() {
-  if (audio) return; const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+  // Chrome only lets a real user gesture (key, click, tap) start audio; a controller button press isn't one. If the context
+  // was made on a pad press it stays 'suspended', so every later key / click / button press tries to resume it.
+  if (audio) { const c = audio.ctx; if (c && c.state === 'suspended' && c.resume) c.resume().catch(() => {}); return; }
+  const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
   try { const ctx = new AC(); if (ctx.resume) ctx.resume(); audio = createAudio(ctx, { autoCues: true, lazyLayers: !!window.__XBOX || /[?&]lazyaudio=1/.test(location.search) }); /* BUG-021: decode only the current weather layer on Xbox */ life.setAudio(ctx); applyAudioSettings(); } catch (e) { audio = null; return; }
   loadMusic().then((r) => { musicStatus = r; }).catch(() => { musicStatus = { cabin: false, flight: false, source: 'error' }; });
 }
@@ -432,6 +435,10 @@ function renderMenu() {
   const s = el.querySelector('.sel'); if (s && s.scrollIntoView) s.scrollIntoView({ block: 'nearest' });
 }
 $('menulist').addEventListener('click', (e) => { const o = e.target.closest('.mo'); if (!o) return; menu.sel = +o.dataset.i; menu.items[menu.sel].act(); if (G.paused) renderMenu(); });
+// Auto-pause when the tab or app is hidden (alt-tab, minimise, Xbox guide): the frame loop stops in a hidden tab but
+// Web Audio doesn't, so the engine kept droning in the background. Opening the pause menu ducks the audio, and you come
+// back paused instead of mid-dive. Manual / test runs (?manual=1) are left alone.
+if (!manual) document.addEventListener('visibilitychange', () => { if (document.hidden && !G.paused) openMenu(); });
 function openMenu() { G.paused = true; $('pause').classList.add('show'); setView('main'); }
 function closeMenu() { G.paused = false; $('pause').classList.remove('show'); }
 function menuAction(a) {

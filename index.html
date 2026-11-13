@@ -1,0 +1,79 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SKYCHARGE — plane game (MVP)</title>
+<style>
+:root{--o:#F7931A;--bg:rgba(8,8,10,.8)}
+html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#f2f2f2}
+canvas#c{display:block;width:100vw;height:100vh}
+.box{background:var(--bg);border:1px solid rgba(247,147,26,.55);border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,.35)}
+#hud{position:fixed;left:24px;top:22px;width:230px;padding:12px 14px 12px;border-left:4px solid var(--o)}
+#veh{font:800 20px/1 system-ui;letter-spacing:.14em;color:var(--o);margin-bottom:10px}
+.row{display:flex;justify-content:space-between;align-items:baseline;font:600 13px/1.9 ui-monospace,Menlo,monospace;color:#bbb}
+.row b{font:700 20px ui-monospace,Menlo,monospace;color:#fff}.row small{color:#888;font-size:11px;margin-left:3px}
+.bar{height:9px;background:#222;border-radius:5px;overflow:hidden;margin:2px 0 6px}.bar i{display:block;height:100%;background:var(--o);width:50%}
+#batbar.low i{background:#ff4a3a}
+#nav{position:fixed;left:50%;top:22px;transform:translateX(-50%);padding:8px 16px;display:flex;align-items:center;gap:10px;font:700 15px system-ui}
+#arrow{width:26px;height:26px;display:grid;place-items:center;color:var(--o);font-size:24px;line-height:1;transition:none}
+#nav .d{color:var(--o);font-family:ui-monospace,Menlo,monospace}
+#status{position:fixed;left:50%;top:74px;transform:translateX(-50%);font:800 16px system-ui;letter-spacing:.16em;padding:6px 14px;border-radius:8px;display:none}
+#status.show{display:block}#status.warn{background:rgba(160,20,10,.85);color:#fff;animation:fl 1s steps(2) infinite}#status.good{background:rgba(247,147,26,.92);color:#111}#status.info{background:var(--bg);color:var(--o);border:1px solid var(--o)}
+@keyframes fl{50%{opacity:.55}}
+#mapwrap{position:fixed;right:24px;bottom:24px;padding:6px}#map{display:block;width:180px;height:180px;border-radius:6px}
+#hint{position:fixed;left:24px;bottom:24px;padding:8px 12px;font:600 13px system-ui;color:#ccc}#hint b{color:var(--o)}
+#toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);padding:10px 18px;font:600 15px system-ui;opacity:0;transition:opacity .35s;pointer-events:none;z-index:20}#toast.show{opacity:1}
+#panel{position:fixed;inset:0;display:none;place-items:center;background:rgba(0,0,0,.55);z-index:30}#panel.show{display:grid}
+#panel .box{padding:22px 28px;max-width:860px;width:88vw}
+#panel h2{margin:0 0 4px;color:var(--o);letter-spacing:.12em;font-size:22px}#panel p{margin:0 0 14px;color:#aaa;font-size:13px}
+#panel table{width:100%;border-collapse:collapse;font-size:14px}#panel td{padding:5px 8px;border-bottom:1px solid #222}#panel td:first-child{color:var(--o);font-weight:700;white-space:nowrap}#panel th{text-align:left;color:#888;font-size:12px;padding:4px 8px;letter-spacing:.1em}
+#pause{position:fixed;inset:0;display:none;place-items:center;background:rgba(0,0,0,.5);z-index:25}#pause.show{display:grid}
+.menu{width:min(720px,90vw);padding:18px 22px 14px}.mt{font:800 30px system-ui;letter-spacing:.3em;color:var(--o)}.mk{font:600 12px system-ui;color:#999;margin:4px 0 10px}.mk b{color:var(--o)}
+#menulist{max-height:66vh;overflow:auto;padding-right:4px}.mh{font:800 12px system-ui;letter-spacing:.16em;color:var(--o);margin:12px 0 4px;padding-top:8px;border-top:1px solid #2a2a2a}
+.mo{padding:7px 12px;border-radius:8px;border:1px solid transparent;cursor:pointer;font:700 15px system-ui}.mo small{display:block;font:500 12px/1.35 system-ui;color:#9a9a9a;margin-top:2px}
+.mo.sel{background:rgba(247,147,26,.16);border-color:var(--o)}.mo.done>div{color:#ffc46b}.mo.danger>div{color:#ff7a66}.mi{font:500 13px/1.45 system-ui;color:#ccc;padding:4px 12px 8px}
+.vsi{position:relative;height:6px;background:#222;border-radius:3px;margin:0 0 4px}.vsi::after{content:"";position:absolute;left:50%;top:-2px;width:1px;height:10px;background:#666}.vsi i{position:absolute;top:0;height:100%;border-radius:3px;background:var(--o)}.vsi i.sink{background:#6aa8ff}
+.coinrow b{color:var(--o)!important}.found{font:600 11px ui-monospace,Menlo,monospace;color:#888;text-align:right;margin-top:-4px}
+#obj{position:fixed;left:50%;top:74px;transform:translateX(-50%);padding:7px 16px;font:600 15px system-ui;display:none;white-space:nowrap;border-color:var(--o)}#obj.show{display:block}#obj b{color:var(--o);letter-spacing:.1em;margin-right:6px}
+body.mission #status{top:120px}
+#prompt{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);padding:9px 16px;font:600 15px system-ui;display:none;white-space:nowrap}#prompt.show{display:block}#prompt b{color:var(--o)}
+kbd{display:inline-block;min-width:16px;padding:1px 6px;border-radius:5px;background:var(--o);color:#111;font:800 13px system-ui;text-align:center}
+#flash{position:fixed;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,rgba(255,190,90,.0) 30%,rgba(247,147,26,.85) 100%);z-index:5}
+#popup{position:fixed;left:50%;top:40%;transform:translate(-50%,0);font:900 40px system-ui;color:var(--o);text-shadow:0 2px 0 #000,0 0 18px rgba(247,147,26,.8);opacity:0;pointer-events:none;z-index:6}
+body.chill #prompt,body.chill #obj{display:none!important}
+#chill{position:fixed;left:28px;bottom:28px;padding:12px 16px;display:none;font:600 14px system-ui;line-height:1.5;border-left:4px solid var(--o)}#chill b{color:var(--o);letter-spacing:.14em}
+body.chill #hud,body.chill #nav,body.chill #hint,body.chill #mapwrap{display:none}body.chill #chill{display:block}
+body.cockpit #hud .row:not(.coinrow),body.cockpit #hud .vsi,body.cockpit #hud .bar,body.cockpit #hint{display:none}
+body.manual #toast{transition:none}
+body.nobat #thrbar,body.nobat #batbar{display:none}body.nobat #thr,body.nobat #bat{font-size:13px!important;color:#888}
+body.nohud #hud,body.nohud #nav,body.nohud #hint,body.nohud #mapwrap,body.nohud #chill,body.nohud #status{display:none!important}
+</style></head><body>
+<canvas id="c"></canvas>
+<div id="hud" class="box"><div id="veh">E-PLANE</div>
+<div class="row">SPD<span><b id="spd">0</b><small id="spdu">km/h</small></span></div>
+<div class="row">ALT<span><b id="alt">0</b><small>m</small> <small id="agl"></small></span></div>
+<div class="row">HDG<span><b id="hdg">000</b><small>°</small></span></div>
+<div class="row">VSI<span><b id="vsi" style="font-size:15px">0.0</b><small>m/s</small></span></div><div class="vsi"><i id="vsibar"></i></div>
+<div class="row">THR<span><b id="thr" style="font-size:15px">0%</b></span></div><div class="bar" id="thrbar"><i></i></div>
+<div class="row">BAT<span><b id="bat">100%</b></span></div><div class="bar" id="batbar"><i></i></div>
+<div class="row coinrow">₿ BTC<span><b id="coins">0</b></span></div><div class="found" id="found">0 found</div></div>
+<div id="nav" class="box"><div id="arrow">➤</div><span><span id="navname">—</span></span><span class="d" id="navd"></span></div>
+<div id="obj" class="box"></div><div id="status"></div><div id="prompt" class="box"></div><div id="flash"></div><div id="popup">+2 ₿</div>
+<div id="mapwrap" class="box"><canvas id="map" width="180" height="180"></canvas></div>
+<div id="hint" class="box"><b>View</b> / <b>?</b> controls · <b>Y</b> / <b>C</b> cabin chill · <b>X</b> / <b>V</b> switch vehicle · <b>R3</b> / <b>B</b> cockpit or chase view</div>
+<div id="chill" class="box"><b id="chillhd">☕ CABIN CHILL</b><br><span id="chilltxt">Autopilot cruise</span><br><small style="color:#aaa">Right stick / arrows: look around · any stick, trigger or bumper takes over</small></div>
+<div id="toast" class="box"></div>
+<div id="pause"><div class="box menu"><div class="mt">PAUSED</div><div class="mk">D-pad / ↑↓ move · <b>A</b> / <b>Enter</b> select · <b>B</b> / <b>Esc</b> back · <b>Menu</b> / <b>P</b> resume</div><div id="menulist"></div></div></div>
+<div id="panel"><div class="box"><h2>CONTROLS</h2><p>Xbox controller (standard mapping) or keyboard. Land slowly on a runway with an orange ⚡ beacon to recharge (seaplane: the floating ⚓ Lagoon Dock). Hang glider: no motor, so circle in the faint rising columns (thermals) or ride the windward ridge. Grab the orange ₿ coins (white ones are blimp-only, flown low; just for fun, no real value). Roadster and sky scooter: drive on the wheels, RT fires the air jets (unlimited compressed air) to hover and fly, LT to sink and land. Seaplane: land on any open water. View / ? closes this panel.</p>
+<table><tr><th>ACTION</th><th>XBOX CONTROLLER</th><th>KEYBOARD</th></tr>
+<tr><td>Drive / steer (roadster, scooter)</td><td>Left stick (RT: air jets up · LT: brake / sink)</td><td>W / S drive · A / D steer · Shift up · Ctrl down</td></tr>
+<tr><td>Pitch / roll (plane, seaplane, glider)</td><td>Left stick</td><td>W / S pitch · A / D roll</td></tr>
+<tr><td>Forward / turn (blimp)</td><td>Left stick</td><td>W / S forward-back · A / D turn</td></tr>
+<tr><td>Throttle up (blimp: rise · glider: none)</td><td>RT</td><td>Shift</td></tr>
+<tr><td>Throttle down + brake (blimp: sink)</td><td>LT</td><td>Ctrl or Space</td></tr>
+<tr><td>Rudder / yaw</td><td>LB / RB</td><td>Q / E</td></tr>
+<tr><td>Camera look</td><td>Right stick</td><td>Arrow keys</td></tr>
+<tr><td>Cabin view + chill (every vehicle has its own interior)</td><td>Y</td><td>C</td></tr>
+<tr><td>Switch vehicle (plane → blimp → glider → seaplane → roadster → scooter)</td><td>X</td><td>V</td></tr>
+<tr><td>Respawn (station · glider: summit launch · seaplane: dock)</td><td>A</td><td>R</td></tr>
+<tr><td>Start mission (on its pad)</td><td>B</td><td>Enter</td></tr>
+<tr><td>Pause menu: missions, upgrades, settings</td><td>Menu · D-pad move · A select · B back</td><td>P · ↑↓ move · Enter select · Esc back</td></tr>
+<tr><td>Controls panel</td><td>View</td><td>? or H</td></tr></table></div></div>
+<script type="module" src="src/main.mjs"></script>
+</body></html>

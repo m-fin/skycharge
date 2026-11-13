@@ -1,0 +1,27 @@
+# deps / build output
+node_modules/
+out/
+dist/
+*.tgz
+*.zip
+*.tar
+*.appx
+*.appxbundle
+*.msix
+*.msixbundle
+# signing certs & secrets (never commit)
+*.pfx
+*.cer
+*.p12
+*.pem
+*.key
+.env
+.env.*
+# renders / video / QA captures
+*.mp4
+*.mov
+qa/**/*.png
+# backups
+*.bak*
+# OS
+.DS_Store

@@ -319,21 +319,22 @@ function updateFx(dt) {
   else { fx.hideCable(); cableK = 0; cableVeh = null; }
   if (v.charging && !v.crashed && !inCab()) fx.setBar(_jp.set(v.pos.x, v.pos.y + barH, v.pos.z), v.battery, k === 'blimp' ? 2 : k === 'scooter' ? 0.7 : 1); else fx.hideBar();
 }
-function syncMeshes() {
+function syncMeshes(dt = DT) {
+  const spin = Math.min(dt, 0.1) * 60; // props turn per second, not per rendered frame (was 2.4x faster on a 144 Hz screen)
   const p = G.plane, b = G.blimp, gl = G.glider, sp = G.seaplane;
   planeG.visible = G.vehicle === 'plane' && !p.crashed; planeG.position.copy(p.pos); planeG.quaternion.copy(p.quat);
-  planeG.userData.prop.rotation.z += (p.battery > 0 ? p.throttle : 0) * 1.4 + 0.02;
+  planeG.userData.prop.rotation.z += ((p.battery > 0 ? p.throttle : 0) * 1.4 + 0.02) * spin;
   gliderG.visible = G.vehicle === 'glider' && !gl.crashed; gliderG.position.copy(gl.pos); gliderG.quaternion.copy(gl.quat);
   seaG.visible = G.vehicle === 'seaplane' && !sp.crashed; seaG.position.copy(sp.pos); seaG.quaternion.copy(sp.quat);
-  seaG.userData.prop.rotation.z += (sp.battery > 0 ? sp.throttle : 0) * 1.3 + 0.02;
+  seaG.userData.prop.rotation.z += ((sp.battery > 0 ? sp.throttle : 0) * 1.3 + 0.02) * spin;
   world.thermalGroup.visible = G.vehicle === 'glider';
   blimpG.visible = G.vehicle === 'blimp'; blimpG.position.set(b.pos.x, b.pos.y + b.bob, b.pos.z); blimpG.rotation.set(b.tilt, -b.yaw, b.bank, 'YXZ');
-  for (const pr of blimpG.userData.props) pr.rotation.z += Math.abs(b.thrust) * 0.5 + 0.03;
+  for (const pr of blimpG.userData.props) pr.rotation.z += (Math.abs(b.thrust) * 0.5 + 0.03) * spin;
   for (const k of ['roadster', 'scooter']) { const h = G[k], g = MESH[k], u = g.userData; g.visible = G.vehicle === k; if (!g.visible) continue;
     g.position.set(h.pos.x, h.pos.y + h.bob, h.pos.z); g.rotation.set(h.pitchVis, -h.yaw, h.rollVis + h.lean, 'YXZ');
     for (const w of u.wheels) if (!u.front.includes(w)) w.rotation.x = h.wheel; for (const f of u.front) f.rotation.set(f === u.fork ? 0 : h.wheel, -h.steer * 0.45, 0, 'YXZ'); if (u.fork) u.wheels[0].rotation.x = h.wheel;
     if (u.bars) u.bars.rotation.y = -h.steer * 0.45; if (k === 'scooter') scootCab.bars.rotation.y = -h.steer * 0.45;
-    if (u.plate) u.plate.rotation.x += ((h.jets.rear > 0.1 ? 1.5 : 0) - u.plate.rotation.x) * 0.2; }
+    if (u.plate) u.plate.rotation.x += ((h.jets.rear > 0.1 ? 1.5 : 0) - u.plate.rotation.x) * (1 - Math.pow(0.8, spin)); }
   for (const [g, cab] of [[planeG, planeCab], [blimpG, blimpCab], [seaG, seaCab], [gliderG, gliderCab], [roadG, roadCab], [scootG, scootCab]]) { const ic = inCab(); cab.group.visible = ic; for (const c of g.children) if (c !== cab.group) c.visible = !ic; }
   const cv = cur(); if (winged() && cv.crashed) { const t = cv.crashed.t; burst.position.copy(cv.crashed.pos); burst.scale.setScalar(2 + t * 14); burst.material.opacity = Math.max(0, 0.85 - t * 0.5); burst.material.color.setHex(cv.crashed.why === 'splash' ? 0xd8f0ff : 0xf7931a); } else burst.material.opacity = 0;
 }
@@ -464,7 +465,7 @@ function frame(dt, inp) {
   if (G.vehicle === 'glider' && inCab()) cockpitBarShift(gliderCab, running ? inp.roll || 0 : 0, running ? inp.pitch || 0 : 0, dt); // 1.0.8.3 (Look): bar follows your stick (+pitch = nose up)
   G.look.x += (inp.lookX - G.look.x) * Math.min(1, dt * 6); G.look.y += (inp.lookY - G.look.y) * Math.min(1, dt * 6);
   if (running) { acc += dt; let n = 0; while (acc >= DT && n < 6) { simTick(inp); acc -= DT; n++; } if (n === 6) acc = 0; }
-  if (running) updateClimb(dt); if (running) life.update(dt, cur().pos); syncMeshes(); updateCamera(dt); updateHUD(dt); syncAudio(); renderer.render(scene, camera);
+  if (running) updateClimb(dt); if (running) life.update(dt, cur().pos); syncMeshes(dt); updateCamera(dt); updateHUD(dt); syncAudio(); renderer.render(scene, camera);
 }
 const merged = () => { const i = input.poll(); if (G.hold) Object.assign(i, G.hold); if (P.settings.invertPitch && winged()) i.pitch = -i.pitch; return i; };
 
@@ -477,14 +478,14 @@ toast(anyProgress ? `Welcome back! ₿ ${P.coins} coins · ${Object.keys(P.compl
 // ---- headless/test hook
 window.pg = {
   G, world, stations: world.stations, THREE, coins, missions, fx, MESH, CAB, weather, weatherNames: WEATHERS, life, setWeather: (n, o) => { const r = weather.set(n, o); syncAudio(); return r; },
-  cam: camera, scn: scene, rnd: renderer, shotFrom(px, py, pz, tx, ty, tz) { syncMeshes(); camera.position.set(px, py, pz); camera.lookAt(tx, ty, tz); camera.near = 1; camera.updateProjectionMatrix(); for (let i = 0; i < 4; i++) weather.update(0.5, cur().pos); renderer.render(scene, camera); return true; },
+  cam: camera, scn: scene, rnd: renderer, shotFrom(px, py, pz, tx, ty, tz) { syncMeshes(0); camera.position.set(px, py, pz); camera.lookAt(tx, ty, tz); camera.near = 1; camera.updateProjectionMatrix(); for (let i = 0; i < 4; i++) weather.update(0.5, cur().pos); renderer.render(scene, camera); return true; },
   get audio() { return audio; }, initAudio() { initAudio(); return !!audio; }, get music() { return musicStatus; },
   get progress() { return P; }, save() { return persist(); }, reload() { P = load(); applyProgress(); return P; }, resetProgress() { resetProgress(); }, menuOpen() { openMenu(); }, menuItems() { return menu.items.map((x) => x.header || x.info || x.label); },
   startMission(id) { const d = missions.defs.find((x) => x.id === id), s0 = world.stations[d.start]; respawn(d.vehicle, s0); const v = cur(); v.battery = 100;
     if (d.vehicle === 'blimp') v.pos.y = s0.h + BLIMP.clear; simTick({ ...ZERO }); tryStartMission(); return G.mission ? G.mission.def.id : null; },
   get climb() { return { ms: climbEMA, norm: climbNorm() }; },
-  step(n = 1, inp = {}) { for (let i = 0; i < n; i++) { simTick({ ...ZERO, ...inp }); updateClimb(DT); } life.update(Math.min(0.1, n * DT), cur().pos); syncMeshes(); updateCamera(n * DT); updateHUD(n * DT); return this.info(); },
-  render() { snapCam = true; syncMeshes(); updateCamera(0); updateHUD(0); renderer.render(scene, camera); return true; },
+  step(n = 1, inp = {}) { for (let i = 0; i < n; i++) { simTick({ ...ZERO, ...inp }); updateClimb(DT); } life.update(Math.min(0.1, n * DT), cur().pos); syncMeshes(n * DT); updateCamera(n * DT); updateHUD(n * DT); return this.info(); },
+  render() { snapCam = true; syncMeshes(0); updateCamera(0); updateHUD(0); renderer.render(scene, camera); return true; },
   press(a) { handle(a); return this.info(); },
   frame(dt = DT) { frame(dt, merged()); return this.info(); }, // one real frame through the input path (gamepad/keyboard)
   chill(on = true) { setChill(on, true); }, lookCaps: LOOK_CAPS, view(mode = 'cockpit') { setCockpit(mode === 'cockpit', true); return mode; }, vehicle(kind) { for (let k = 0; k < 6 && kind !== G.vehicle; k++) switchVehicle(); }, respawn(i = 0, kind = G.vehicle) { return respawn(kind, world.stations[i]).name; },
@@ -512,7 +513,7 @@ function prewarm() {
   for (const [o, v, fc] of saved) { o.visible = v; o.frustumCulled = fc; }
   if (renderer.info && renderer.info.programs) console.log('prewarm: ' + renderer.info.programs.length + ' programs');
 }
-prewarm(); syncMeshes();
+prewarm(); syncMeshes(0);
 if (!manual) { let last = performance.now(); const loop = (now) => { const dt = Math.min(0.1, (now - last) / 1000); last = now; frame(dt, merged()); requestAnimationFrame(loop); }; requestAnimationFrame(loop); }
 else { pg.render(); }
 document.title = document.title + (manual ? ' [manual]' : '');

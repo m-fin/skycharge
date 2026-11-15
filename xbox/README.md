@@ -53,7 +53,7 @@ The package contains `index.html`, `boot.js`, `shim.js`, and `game.js` as separa
 
 ## Patches applied to the copy
 
-`sync-game-src.py` stops if any anchor string is gone, and it prints each miss. It does not change `src/`, `index.html`, or `audio/` in the repo.
+`sync-game-src.py` stops if any anchor string is gone, and it prints each miss. The `audio/sfx.js` fetch-to-XHR anchor is the exception: when the copy already contains that patch's XMLHttpRequest arraybuffer loader (`encodedBytes`, with `fetch` only in the catch), the anchor counts as already applied. Every other anchor still fails the build. It does not change `src/`, `index.html`, or `audio/` in the repo.
 
 - `src/input.mjs` — gamepads via `Array.prototype.slice` (no spread)
 - `src/world.mjs` — simpler cloud spheres when `window.__XBOX`

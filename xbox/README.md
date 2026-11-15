@@ -41,13 +41,15 @@ npm ci
 ./pack-legacy.sh 1.0.9.0
 ```
 
-Music is required, and it is MP3/WAV only, matching the old pack script:
+Music is required, and it is MP3/WAV only. The loader reads these paths inside the package (`src/main.mjs`), not `xbox22k/`:
 
 - `audio/music/out/cabin_chill_loop.mp3`
 - `audio/music/out/flight_theme_loop.mp3`
-- optional `audio/music/out/xbox22k/weather_rain_layer.wav`, `weather_fog_layer.wav`, `weather_cloudy_layer.wav` (16-bit 22.05 kHz). Those are copied to `audio/music/out/` inside the package, which is where the game looks.
+- `audio/music/out/weather_rain_layer.wav`, `weather_fog_layer.wav`, `weather_cloudy_layer.wav` (16-bit, 22.05 kHz, mono, 128.000 s)
 
-`SKYCHARGE_MUSIC_DIR` overrides that directory. The rendered loops are not in git today; the pack fails with the missing paths rather than shipping a silent package. `compat/xbox_audit.py` then scans the layout and the build fails if it reports any blocker.
+`pack-legacy.sh` takes the weather WAVs from `audio/music/out/xbox22k/` when those masters are present. If one is missing, it resamples `audio/music/out/weather_*_layer.wav` (a 128 s master) into `xbox22k/` and packs that file. If neither file exists, the script exits non-zero and prints the missing paths. OGG/Opus is never packed.
+
+`SKYCHARGE_MUSIC_DIR` overrides the music directory. `compat/xbox_audit.py` then scans the layout and the build fails if it reports any blocker.
 
 The package contains `index.html`, `boot.js`, `shim.js`, and `game.js` as separate files. `game.js` is esbuild targeting ES2017 against three **0.162.0** (`build/three.module.js`, WebGL1). `xbox-shim.js` and `xbox-boot.js` in this folder are the copies that ship. `compat/shared/` from the old tree is not used.
 

@@ -90,8 +90,8 @@ PATCHES = [
          '\nlet acc = 0, hudAcc = 0, hudN = 0; // Xbox: HUD + minimap redraw every 2nd frame\n'),
         ('  G, world, stations: world.stations, THREE, coins, missions,',
          '  renderer, scene, camera, G, world, stations: world.stations, THREE, coins, missions,'),
-        ('if (!manual) { let last = performance.now();',
-         "if (window.__boot) window.__boot('game init ok');\nif (!manual) { let last = performance.now();"),
+        ('if (!manual) life2.loop((dt) => frame(dt, merged()));',
+         "if (window.__boot) window.__boot('game init ok');\nif (!manual) life2.loop((dt) => frame(dt, merged()));"),
     ], None),
     ('audio/sfx.js', [
         (SFX_FETCH_ANCHOR, SFX_FETCH_REPLACEMENT),

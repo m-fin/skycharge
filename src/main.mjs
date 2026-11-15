@@ -12,6 +12,8 @@ import { createMissions, fmt } from './missions.mjs';
 import { load, save, clear, defaults } from './progress.mjs';
 import { createAudio } from '../audio/sfx.js';
 import { createInput } from './input.mjs';
+import { createLifecycle } from './lifecycle.mjs'; // Xbox polish: hide / suspend / blur / pad drop / context loss
+import { achieve, signIn, setPresence, achieved } from './platform.mjs'; // no-op platform hooks (no network)
 
 const q = new URLSearchParams(location.search), seed = +(q.get('seed') || 1), manual = q.get('manual') === '1';
 const FW = +q.get('w') || 0, FH = +q.get('h') || 0, DT = 1 / 60;
@@ -58,7 +60,7 @@ const burst = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 2), new THREE.Mesh
 // ---- UI helpers
 let toastT = 0; function toast(msg, s = 3.2) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); toastT = s; }
 // ---- audio (Sonic Rift sfx.js): AudioContext made on the first key / click / controller button press
-let audio = null, wasLow = false;
+let audio = null, audioCtx = null, wasLow = false;
 // climb/sink: vertical speed smoothed with an EMA (tau 0.5 s), normalized so +5 m/s (a strong thermal) reads 1. Shared by the HUD VSI and setLift.
 const CLIMB_FULL = 5, CLIMB_TAU = 0.5; // glider: GLIDER.climbFull (1.6 m/s: what circling in a strong ~3 m/s thermal core nets after the glider's own sink) reads about 1
 let climbEMA = 0, climbPrevY = null, climbVeh = null;
@@ -75,7 +77,7 @@ function initAudio() {
   // was made on a pad press it stays 'suspended', so every later key / click / button press tries to resume it.
   if (audio) { const c = audio.ctx; if (c && c.state === 'suspended' && c.resume) c.resume().catch(() => {}); return; }
   const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-  try { const ctx = new AC(); if (ctx.resume) ctx.resume(); audio = createAudio(ctx, { autoCues: true, lazyLayers: !!window.__XBOX || /[?&]lazyaudio=1/.test(location.search) }); /* BUG-021: decode only the current weather layer on Xbox */ life.setAudio(ctx); applyAudioSettings(); } catch (e) { audio = null; return; }
+  try { const ctx = new AC(); audioCtx = ctx; if (ctx.resume) ctx.resume(); audio = createAudio(ctx, { autoCues: true, lazyLayers: !!window.__XBOX || /[?&]lazyaudio=1/.test(location.search) }); /* BUG-021: decode only the current weather layer on Xbox */ life.setAudio(ctx); applyAudioSettings(); } catch (e) { audio = null; return; }
   loadMusic().then((r) => { musicStatus = r; }).catch(() => { musicStatus = { cabin: false, flight: false, source: 'error' }; });
 }
 // Music loops (Sonic Rift, 128 s, seamless). Single-file build: build.mjs embeds them as base64 (window.__SKYCHARGE_MUSIC, MP3),
@@ -147,7 +149,7 @@ function applyProgress() { coins.sync(P.collected); MODS.drain = P.upgrades.batt
   G.cockpit = q.get('view') ? q.get('view') !== 'chase' : P.settings.view !== 'chase'; document.body.classList.toggle('cockpit', G.cockpit); /* 1.0.8.2: cockpit is the default view */ }
 function persist() { return save(P); }
 let flashT = 0, popT = 0, popTxt = '';
-function collect(list) { let val = 0; for (const c of list) { val += COIN_VALUE[c.kind]; P.coins += COIN_VALUE[c.kind]; P.collected.push(c.id); } flashT = 0.45; popT = 1.1; popTxt = `+${val} ₿`; persist(); if (audio) audio.coin(); }
+function collect(list) { let val = 0; for (const c of list) { val += COIN_VALUE[c.kind]; P.coins += COIN_VALUE[c.kind]; P.collected.push(c.id); } flashT = 0.45; popT = 1.1; popTxt = `+${val} ₿`; persist(); if (audio) audio.coin(); achieve('first_coin'); }
 function missionHere() { // the mission you can start where you are parked (plane: stopped on a runway; blimp: settled on a pad)
   const v = cur(); let st = null;
   if (G.vehicle === 'plane') { if (v.crashed || !v.grounded || v.v >= 6) return null; st = world.inStation(v.pos.x, v.pos.z, 20); }
@@ -258,7 +260,7 @@ function simTick(inp) {
     if (ev === 'touchdown') toast(k === 'glider' ? '🪂 Landed — press A / R to relaunch from the summit' : world.inStation(p.pos.x, p.pos.z) ? '🛬 Nice landing — slow down below 20 km/h to charge' : '🛬 Touchdown');
     if (ev === 'splashdown') toast(world.nearDock(p.pos.x, p.pos.z, 200) ? '🌊 Smooth water landing — taxi to the dock and slow down to charge' : '🌊 Smooth water landing — you can taxi and take off again');
     if (ev === 'splashdown:hard') toast('💦 Big splash! Bounced down onto the floats — you can taxi and take off again');
-    if (ev && ev.startsWith('splashdown')) splashBurst(p, ev === 'splashdown:hard' ? 1.6 : 1);
+    if (ev && ev.startsWith('splashdown')) { splashBurst(p, ev === 'splashdown:hard' ? 1.6 : 1); achieve('first_water_landing'); }
     lastEvent = ev;
   } else if (hovering()) { const ev = stepHover(cur(), G.chill ? autopilot() : inp, world, DT, G.t); lastEvent = ev || lastEvent;
     if (ev === 'liftoff') toast('💨 Air jets on — hovering. Unlimited compressed air: RT climb, LT sink, stick to fly', 2.5);
@@ -266,6 +268,7 @@ function simTick(inp) {
   else stepBlimp(G.blimp, G.chill ? autopilot() : inp, world, DT, G.t);
   coins.update(G.t);
   const v = cur(); if (v.crashed) return;
+  if (v.charging) achieve('first_charge');
   const got = coins.check(G.vehicle, v.pos); if (got.length) collect(got);
   if (G.mission) { const r = missions.update(G.mission, G.vehicle, v, DT); if (r.state === 'run') { G.objective = r.objective; G.target = r.target; } else finishMission(r); }
 }
@@ -441,11 +444,8 @@ function renderMenu() {
   const s = el.querySelector('.sel'); if (s && s.scrollIntoView) s.scrollIntoView({ block: 'nearest' });
 }
 $('menulist').addEventListener('click', (e) => { const o = e.target.closest('.mo'); if (!o) return; menu.sel = +o.dataset.i; menu.items[menu.sel].act(); if (G.paused) renderMenu(); });
-// Auto-pause when the tab or app is hidden (alt-tab, minimise, Xbox guide): the frame loop stops in a hidden tab but
-// Web Audio doesn't, so the engine kept droning in the background. Opening the pause menu ducks the audio, and you come
-// back paused instead of mid-dive. Manual / test runs (?manual=1) are left alone.
-if (!manual) document.addEventListener('visibilitychange', () => { if (document.hidden && !G.paused) openMenu(); });
-function openMenu() { G.paused = true; $('pause').classList.add('show'); setView('main'); }
+function openMenu() { closePanel(); G.paused = true; $('pause').classList.add('show'); setView('main'); } // closing the controls panel first keeps pause on top (#panel z 30 > #pause z 25)
+function closePanel() { G.panel = false; $('panel').classList.remove('show'); }
 function closeMenu() { G.paused = false; $('pause').classList.remove('show'); }
 function menuAction(a) {
   const sel = selectable(), k = sel.indexOf(menu.sel);
@@ -460,8 +460,9 @@ function menuAction(a) {
 function handle(a) {
   if (G.paused) return menuAction(a);
   if (a === 'panel') { G.panel = !G.panel; $('panel').classList.toggle('show', G.panel); return; }
-  if (a === 'close') { G.panel = false; $('panel').classList.remove('show'); return; }
+  if (a === 'close' || (a === 'b' && G.panel)) { closePanel(); return; } // B (Back) closes the controls panel, like Esc
   if (a === 'pause') { openMenu(); return; }
+  if (G.panel && (a === 'menuUp' || a === 'menuDown')) { const bx = document.querySelector('#panel .box'); if (bx) bx.scrollTop += a === 'menuDown' ? 90 : -90; return; } // D-pad / arrows scroll the controls panel when it overflows (720p)
   if (G.panel) return;
   if (a === 'chill') setChill(!G.chill);
   else if (a === 'view') setCockpit(!G.cockpit);
@@ -526,6 +527,14 @@ function prewarm() {
   if (renderer.info && renderer.info.programs) console.log('prewarm: ' + renderer.info.programs.length + ' programs');
 }
 prewarm(); syncMeshes(0);
-if (!manual) { let last = performance.now(); const loop = (now) => { const dt = Math.min(0.1, (now - last) / 1000); last = now; frame(dt, merged()); requestAnimationFrame(loop); }; requestAnimationFrame(loop); }
+// Xbox polish (Flow's lifecycle.mjs): sleep on hide / suspend / background / context loss saves progress and leaves the pause
+// menu up, so waking never drops the player straight back into flight; blur or a controller drop opens pause once.
+// Nothing auto-resumes: the player closes the menu as usual. Manual / test runs (?manual=1) do not start the loop.
+const life2 = createLifecycle({ canvas, getAudioCtx: () => audioCtx,
+  onSleep: () => { try { persist(); } catch (e) { /* storage full / blocked */ } if (!G.paused) openMenu(); },
+  onPauseRequest: () => { if (!G.paused) openMenu(); } });
+window.pg.lifecycle = life2; window.pg.achieved = achieved;
+signIn(); setPresence('Exploring the islands');
+if (!manual) life2.loop((dt) => frame(dt, merged()));
 else { pg.render(); }
 document.title = document.title + (manual ? ' [manual]' : '');

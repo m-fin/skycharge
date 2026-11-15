@@ -22,9 +22,20 @@ dist/
 # signing certs & secrets (never commit)
 *.pfx
 *.cer
+*.crt
 *.p12
 *.pem
 *.key
+*.p8
+*.snk
+*.keystore
+*.jks
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+**/secrets.*
+**/credentials.*
 # Xbox pack intermediates (makemsix build tree, patched game copy)
 xbox/build/
 xbox/.tools/

@@ -65,3 +65,20 @@ Harness issue, not a game bug. qa_test_slowbox.mjs is a copy with 240 s timeouts
 - Errors are caught, so expected console result is silent rain/fog/wind layers, not a crash. Base music uses XHR and is unaffected.
 - QA miss: my BUG-021 lazy check ran over http in headless Chrome, where fetch works. Not tested on the console.
 - Fix: route that helper through the same XHR arraybuffer loader. Gate addition: built game.js must have no fetch() outside three.js loaders.
+
+### BUG-027 (minor, visual, owner Look/Flow) - mission/charge beacon beam draws over the cockpit canopy frame
+- Found by QA Nov 15 2026 in store shot `/workspace/skycharge-store/screenshots/02_cockpit_fp.png` (1.0.8.2, plane cockpit).
+- The thin beacon beam (x ~716 px) passes in front of the black canopy top bar instead of behind it; it should be hidden by the frame.
+- Likely the beam is transparent with depthTest/depthWrite off or rendered after the cockpit layer. Not checked on the console.
+- Store fix for now: retake or reframe shot 02 so no beam crosses the canopy. Code fix after 1.0.8.3.
+
+### BUG-028 (minor, visual, owner World/Look) - hard-edged lighter band on the open water near the lagoon coast
+- Found by QA Nov 15 2026 in store shots `09_whale_boat.png` and `_candidates/09b_whale_boat_nobeams.png` (1.0.8.2).
+- A straight-edged lighter wedge crosses the sea surface (clearest in 09b, diagonal from the boat); likely the shallow/shore tint boundary or a water tile seam.
+- Not checked on the console. Not a blocker for the store set; fix candidate for the shoreline pass.
+
+### BUG-029 (major on Xbox, CSS, owner Look) - overlay CSS that EdgeHTML 18 ignores: `inset`, `place-items`, flex `gap`
+- Found by QA Nov 15 2026 by scanning live index.html; the same rules were in the shipped www-legacy/index.html (1.0.8.2) and shim.js has no fallback.
+- `#panel`, `#pause`, `#flash` used `position:fixed;inset:0` and `place-items:center`; `#nav` used flex `gap:10px`. Edge 18 supports none of these (inset Chromium 87+, place-items 79+, flex gap 84+).
+- Expected on console without the fallbacks: the pause and controls overlays may not fill the screen or be centred, and nav items sit with no spacing.
+- Source fix is in index.html: `top:0;right:0;bottom:0;left:0` beside `inset`, `align-items` and `justify-items` beside `place-items`, child margins beside flex `gap`, and `width`/`max-width` instead of `min()`. Title-safe insets are `--safe-x:5vw` and `--safe-y:5vh`. The controls panel scrolls (`max-height`/`overflow`). HUD type is still under 16 px (BUG-008). Not confirmed on a console.

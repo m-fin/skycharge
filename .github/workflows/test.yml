@@ -15,5 +15,11 @@ jobs:
           cache: npm
       - run: npm ci
       # headless Chrome (preinstalled on ubuntu-latest at /usr/bin/google-chrome) with SwiftShader WebGL.
-      # The music rounds skip: the rendered loops in audio/music/out/ aren't in git.
       - run: npm test
+      - name: Xbox packaging tests
+        run: |
+          if ! command -v ffmpeg >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          python3 -m unittest xbox/test_sync_game_src.py xbox/test_stage_music.py

@@ -32,7 +32,7 @@ The layers are all optional. Whatever loads gets used, and a missing layer just 
 |---|---|
 | single file `out/PlaneGame_play.html` | embedded by build.mjs as `window.__SKYCHARGE_MUSIC.rain/fog/cloudy`. These are 96 kbps gapless MP3s encoded from the WAVs into `audio/music/out/build96k/`; the delivered files are untouched. `NO_WX_MUSIC=1` skips them. |
 | served over http / Xbox package (`ms-appx:`) | `audio/music/out/weather_<rain|fog|cloudy>_layer.wav`, then `.mp3` if the WAV is missing |
-| Xbox package (pack-legacy.sh) | copies `audio/music/out/xbox22k/weather_*_layer.wav`: 16-bit, 22.05 kHz, mono, exactly 2,822,400 samples = 128.000 s |
+| Xbox package (pack-legacy.sh) | required. Copies `audio/music/out/xbox22k/weather_*_layer.wav` into `audio/music/out/` in the package (16-bit, 22.05 kHz, mono, exactly 2,822,400 samples = 128.000 s). If `xbox22k/` is missing, resamples the 128 s master `audio/music/out/weather_*_layer.wav` into `xbox22k/` first. A missing layer fails the pack. |
 
 To add or replace a layer, drop the file in with the same name. No code change is needed.
 

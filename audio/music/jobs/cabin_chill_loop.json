@@ -1,0 +1,75 @@
+{
+ "cue": "cabin_chill_loop",
+ "bpm": 75,
+ "bars": 40,
+ "samples": 5644800,
+ "seconds": 128.0,
+ "loudnorm": {
+  "I": -16.0,
+  "TP": -1.5,
+  "LRA": 11.0
+ },
+ "A_synth": {
+  "inputs": [
+   "cabin_chill_loop.fg"
+  ],
+  "outputs": [
+   "cabin_chill_loop_raw.wav"
+  ],
+  "cmd": [
+   "ffmpeg",
+   "-y",
+   "-/filter_complex",
+   "{in:cabin_chill_loop.fg}",
+   "-map",
+   "[out]",
+   "-ac",
+   "1",
+   "-ar",
+   "44100",
+   "-c:a",
+   "pcm_f32le",
+   "{out:cabin_chill_loop_raw.wav}"
+  ]
+ },
+ "B_measure": {
+  "inputs": [
+   "cabin_chill_loop_raw.wav"
+  ],
+  "outputs": [],
+  "cmd": [
+   "ffmpeg",
+   "-y",
+   "-i",
+   "{in:cabin_chill_loop_raw.wav}",
+   "-af",
+   "loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json",
+   "-f",
+   "null",
+   "-"
+  ]
+ },
+ "C_finalize_template": {
+  "inputs": [
+   "cabin_chill_loop_raw.wav"
+  ],
+  "outputs": [
+   "cabin_chill_loop.ogg"
+  ],
+  "cmd": [
+   "ffmpeg",
+   "-y",
+   "-i",
+   "{in:cabin_chill_loop_raw.wav}",
+   "-af",
+   "loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=@I:measured_TP=@TP:measured_LRA=@LRA:measured_thresh=@TH:offset=@OFF:linear=true:print_format=json,aresample=44100",
+   "-ac",
+   "1",
+   "-c:a",
+   "libvorbis",
+   "-q:a",
+   "5",
+   "{out:cabin_chill_loop.ogg}"
+  ]
+ }
+}

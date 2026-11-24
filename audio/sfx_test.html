@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>SKYCHARGE audio test</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body{background:#0b0b0d;color:#eee;font:15px/1.4 system-ui,sans-serif;margin:24px;max-width:760px}
+  h1{color:#F7931A;font-size:22px;margin:0 0 4px} h2{color:#F7931A;font-size:15px;margin:18px 0 6px;text-transform:uppercase;letter-spacing:.06em}
+  .row{display:flex;align-items:center;gap:10px;margin:6px 0} label{width:150px;color:#bbb} input[type=range]{flex:1;accent-color:#F7931A}
+  output{width:56px;text-align:right;font-variant-numeric:tabular-nums}
+  button{background:#1a1a1f;color:#eee;border:1px solid #F7931A;border-radius:6px;padding:7px 12px;margin:3px;cursor:pointer;font:inherit}
+  button.on{background:#F7931A;color:#000} #state{white-space:pre;font:12px ui-monospace,monospace;color:#9a9a9a;background:#111;padding:8px;border-radius:6px}
+  .note{color:#888;font-size:13px}
+</style></head><body>
+<h1>SKYCHARGE audio test</h1>
+<div class="note">Serve over http (ES module): <code>python3 -m http.server 8765</code> in the game folder, then open <code>/audio/sfx_test.html</code>. Click <b>Start audio</b> first.</div>
+<p><button id="start">▶ Start audio</button> <button id="mute">Mute</button> <span id="ctx" class="note">not started</span></p>
+
+<h2>Engine</h2>
+<div class="row"><label>Vehicle</label><button id="vPlane" class="on">✈ Plane</button><button id="vBlimp">🎈 Blimp</button><button id="vGlider">🪁 Glider</button><button id="vSea">🌊 Seaplane</button></div>
+<div class="row"><label>Throttle</label><input id="thr" type="range" min="0" max="1" step="0.01" value="0"><output id="thrO">0.00</output></div>
+<div class="row"><label>Speed (m/s)</label><input id="spd" type="range" min="0" max="70" step="0.5" value="0"><output id="spdO">0</output></div>
+
+<h2>Glider vario + water</h2>
+<div class="row"><label>Climb (−1..1)</label><input id="clb" type="range" min="-1" max="1" step="0.01" value="0"><output id="clbO">0.00</output></div>
+<div class="row"><label>Vario</label><button id="vario" class="on">On</button><label style="width:auto">On water</label><button id="water">Off</button></div>
+
+<h2>Charging</h2>
+<div class="row"><label>Charging</label><button id="chg">Off</button><button id="auto">Auto-charge 0→100%</button></div>
+<div class="row"><label>Battery</label><input id="bat" type="range" min="0" max="1" step="0.005" value="0.3"><output id="batO">0.30</output></div>
+
+<h2>Cabin chill + music</h2>
+<div class="row"><label>Cabin (Y)</label><button id="cab">Off</button><button id="pause">Pause</button></div>
+<div class="row"><label>Music</label><button id="load">Load music OGGs</button><span id="musS" class="note">not loaded (renders not done yet is fine)</span></div>
+
+<h2>Cues</h2>
+<div><button data-cue="coin">coin</button><button data-cue="chargeComplete">chargeComplete</button><button data-cue="missionComplete">missionComplete</button>
+<button data-cue="vehicleSwitch">vehicleSwitch</button><button data-cue="chillOn">chillOn</button><button data-cue="chillOff">chillOff</button>
+<button data-cue="crash">crash</button><button data-cue="lowBattery">lowBattery</button></div>
+
+<h2>Volume</h2>
+<div class="row"><label>Master</label><input id="mv" type="range" min="0" max="1" step="0.01" value="0.8"><output id="mvO">0.80</output></div>
+<div class="row"><label>Music</label><input id="muv" type="range" min="0" max="1" step="0.01" value="0.55"><output id="muvO">0.55</output></div>
+<div class="row"><label>SFX</label><input id="sv" type="range" min="0" max="1" step="0.01" value="1"><output id="svO">1.00</output></div>
+
+<h2>State</h2><div id="state">–</div>
+
+<script type="module">
+import { createAudio } from './sfx.js';
+const $ = (id) => document.getElementById(id);
+let audio = null, ctx = null, vehicle = 'plane', charging = false, cabin = false, paused = false, autoChg = false;
+const ui = { thr: 0, spd: 0, bat: 0.3, clb: 0 }; let vario = true, onWater = false;
+$('start').onclick = async () => {
+  if (audio) return; ctx = new (window.AudioContext || window.webkitAudioContext)(); await ctx.resume();
+  audio = createAudio(ctx); window.audio = audio; $('start').classList.add('on'); requestAnimationFrame(loop);
+};
+// Mimics the game: every per-frame setter is called every animation frame.
+let lastT = performance.now();
+function loop(t) {
+  const dt = Math.min(0.1, (t - lastT) / 1000); lastT = t;
+  if (autoChg && charging) { ui.bat = Math.min(1, ui.bat + 0.09 * dt); $('bat').value = ui.bat; $('batO').textContent = ui.bat.toFixed(2); if (ui.bat >= 1) autoChg = false; }
+  audio.setVehicle(vehicle); audio.setThrottle(ui.thr); audio.setSpeed(ui.spd);
+  audio.setLift(ui.clb); audio.setOnWater(onWater); audio.setCharging(charging, ui.bat); audio.setCabin(cabin); audio.setPaused(paused);
+  const s = audio.state(); $('ctx').textContent = 'context: ' + s.ctxState;
+  $('state').textContent = JSON.stringify({ vehicle: s.vehicle, throttle: +s.throttle.toFixed(2), speed: s.speed, climb: +s.climb.toFixed(2), vario: s.vario, onWater: s.onWater, charging: s.charging, level: +s.level.toFixed(3), cabin: s.cabin, paused: s.paused, muted: s.muted, music: s.music });
+  requestAnimationFrame(loop);
+}
+const slider = (id, key, fmt = (v) => v.toFixed(2)) => $(id).oninput = (e) => { ui[key] = +e.target.value; $(id + 'O').textContent = fmt(ui[key]); };
+slider('thr', 'thr'); slider('spd', 'spd', (v) => v.toFixed(0)); slider('bat', 'bat'); slider('clb', 'clb');
+const VB = { plane: 'vPlane', blimp: 'vBlimp', glider: 'vGlider', seaplane: 'vSea' };
+for (const [k, id] of Object.entries(VB)) $(id).onclick = () => { vehicle = k; for (const j of Object.values(VB)) $(j).classList.toggle('on', j === id); };
+$('vario').onclick = () => { vario = !vario; $('vario').textContent = vario ? 'On' : 'Off'; $('vario').classList.toggle('on', vario); audio && audio.setVario(vario); };
+$('water').onclick = () => { onWater = !onWater; $('water').textContent = onWater ? 'On' : 'Off'; $('water').classList.toggle('on', onWater); };
+$('chg').onclick = () => { charging = !charging; $('chg').textContent = charging ? 'On' : 'Off'; $('chg').classList.toggle('on', charging); };
+$('auto').onclick = () => { ui.bat = 0; charging = true; autoChg = true; $('chg').textContent = 'On'; $('chg').classList.add('on'); };
+$('cab').onclick = () => { cabin = !cabin; $('cab').textContent = cabin ? 'On' : 'Off'; $('cab').classList.toggle('on', cabin); };
+$('pause').onclick = () => { paused = !paused; $('pause').classList.toggle('on', paused); };
+$('mute').onclick = () => { if (!audio) return; const m = audio.toggleMute(); $('mute').classList.toggle('on', m); $('mute').textContent = m ? 'Muted' : 'Mute'; };
+$('load').onclick = async () => { if (!audio) return; $('musS').textContent = 'loading…';
+  const r = await audio.loadMusic({ cabin: './music/out/cabin_chill_loop.ogg', flight: './music/out/flight_theme_loop.ogg' });
+  $('musS').textContent = `cabin: ${r.cabin ? 'loaded' : 'missing'}, flight: ${r.flight ? 'loaded' : 'missing'}`; };
+document.querySelectorAll('[data-cue]').forEach((b) => b.onclick = () => audio && audio[b.dataset.cue]());
+for (const [id, fn] of [['mv', 'setMasterVolume'], ['muv', 'setMusicVolume'], ['sv', 'setSfxVolume']])
+  $(id).oninput = (e) => { $(id + 'O').textContent = (+e.target.value).toFixed(2); audio && audio[fn](+e.target.value); };
+</script>
+</body></html>

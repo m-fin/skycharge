@@ -1,0 +1,46 @@
+{
+ "cabin_chill": {
+  "order": [
+   "pad",
+   "pad_bright",
+   "ep",
+   "bass",
+   "kick",
+   "snare",
+   "hats",
+   "bell",
+   "flute",
+   "rain",
+   "hum"
+  ],
+  "loop_samples": 5644800,
+  "total_samples": 19474560,
+  "seconds": 441.6,
+  "stream_loop": 3,
+  "bar_s": 3.2
+ },
+ "flight_theme": {
+  "order": [
+   "pad",
+   "pad_bright",
+   "pad_warm",
+   "arp",
+   "bass",
+   "kick",
+   "claps",
+   "hats",
+   "riser",
+   "air",
+   "sub",
+   "leadA",
+   "leadB",
+   "leadHi",
+   "bell"
+  ],
+  "loop_samples": 5644800,
+  "total_samples": 17942400,
+  "seconds": 406.85714285714283,
+  "stream_loop": 3,
+  "bar_s": 2.2857142857142856
+ }
+}

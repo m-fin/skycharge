@@ -1,0 +1,2 @@
+cabin_chill pad pad_bright ep bass kick snare hats bell flute rain hum 3
+flight_theme pad pad_bright pad_warm arp bass kick claps hats riser air sub leadA leadB leadHi bell 3

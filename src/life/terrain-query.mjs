@@ -29,5 +29,5 @@ export function makeTerrainQuery(world) {
     return false;
   }
   const treeAt = (x, z, r = 4) => (world.treeHit ? !!world.treeHit(x, world.heightAt(x, z) + 3, z, r) : false);
-  return { heightAt: world.heightAt, waterLevel: 0, half: 3900, stations, dock, landmarks: lm, thermals: world.thermals || [], launch: world.launch || null, blocked, treeAt, CLEAR };
+  return { heightAt: world.heightAt, waterLevel: 0, half: 3900, stations, dock, landmarks: lm, thermals: world.thermals || [], launch: world.launch || null, blocked, treeAt, CLEAR, openSky: !!world.openSky };
 }

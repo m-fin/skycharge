@@ -112,28 +112,24 @@ export function stepPlane(s, inp, world, dt) {
     s.vel.copy(_f).multiplyScalar(s.v); s.vel.y -= (1 - lift) * 14;
     s.pos.addScaledVector(s.vel, dt);
     const gr = world.groundAt(s.pos.x, s.pos.z);
+    // Soft sky floor. A level, slow arrival settles so you can charge. A hard arrival bounces back into the air. Never a crash.
     if (s.pos.y < gr.h + P.gear) {
       _r.set(1, 0, 0).applyQuaternion(s.quat);
-      const gentle = s.vel.y > -7 && _f.y > -0.22 && _f.y < 0.4 && Math.abs(_r.y) < 0.3 && s.v < 60;
-      if (gr.water) return crash(s, 'splash');
-      if (!gentle) return crash(s, 'hard');
-      s.grounded = true; s.pos.y = gr.h + P.gear; setPlaneAttitude(s, Math.atan2(_f.x, -_f.z), 0); s.vel.y = 0;
-      return 'touchdown';
+      const gentle = s.vel.y > -7 && _f.y > -0.22 && _f.y < 0.4 && Math.abs(_r.y) < 0.35 && s.v < 60;
+      s.pos.y = gr.h + P.gear; s.vel.y = 0;
+      if (gentle) { s.grounded = true; setPlaneAttitude(s, Math.atan2(_f.x, -_f.z), 0); return 'touchdown'; }
+      s.pos.y += 1.2; s.v *= 0.9; return 'skyfloor';
     }
     if (s.pos.y > 2600) { s.pos.y = 2600; }
     s.charging = false; return null;
   }
-  // grounded: taxi / takeoff roll
+  // resting on the sky floor: taxi / takeoff roll. The floor is flat, so nothing to hit.
   let hd = Math.atan2(_f.x, -_f.z); hd += (inp.yaw + inp.roll * 0.6) * 0.9 * clamp(s.v / 6 + 0.25, 0, 1) * dt;
   s.v = Math.max(0, s.v + (thrust - 0.0025 * s.v * s.v - 0.35 - brake * 6) * dt); if (s.v < 0.05 && thrust === 0) s.v = 0;
   const nx = s.pos.x + Math.sin(hd) * s.v * dt, nz = s.pos.z - Math.cos(hd) * s.v * dt, gr = world.groundAt(nx, nz);
-  if (gr.water) return crash(s, 'splash');
-  const rise = gr.h + P.gear - s.pos.y;
-  if (rise > Math.max(1.2, s.v * dt * 0.7) && s.v > 8) return crash(s, 'terrain');
   s.pos.x = nx; s.pos.z = nz;
   let pitch = 0;
   if (inp.pitch > 0.2 && s.v > P.rotate) { s.grounded = false; pitch = 0.14; s.pos.y = Math.max(s.pos.y, gr.h + P.gear) + 0.3; setPlaneAttitude(s, hd, pitch); return 'liftoff'; }
-  if (rise < -2.5) { s.grounded = false; setPlaneAttitude(s, hd, 0); return null; } // rolled off an edge
   s.pos.y = gr.h + P.gear; setPlaneAttitude(s, hd, 0); s.vel.set(Math.sin(hd) * s.v, 0, -Math.cos(hd) * s.v);
   s.charging = !!world.inStation(s.pos.x, s.pos.z, 20) && s.v < 6;
   if (s.charging) s.battery = Math.min(100, s.battery + 9 * MODS.charge * dt);
@@ -168,17 +164,18 @@ export function stepGlider(s, inp, world, dt) {
   s.vel.copy(_f).multiplyScalar(s.v); s.vel.y += s.lift - turnSink - (1 - lift) * 3;
   s.pos.addScaledVector(s.vel, dt);
   if (s.pos.y > 2600) s.pos.y = 2600;
-  if (world.treeHit(s.pos.x, s.pos.y, s.pos.z, 1.2)) return crash(s, 'tree');
   const gr = world.groundAt(s.pos.x, s.pos.z);
+  // Soft sky floor catches a sink. The glider stays airborne (no terrain, trees or water to crash into).
   if (s.pos.y < gr.h + P.clear) {
-    if (gr.water) return crash(s, 'splash');
-    _r.set(1, 0, 0).applyQuaternion(s.quat);
-    if (s.vel.y < -3 || s.v > 16 || Math.abs(_r.y) > 0.35) return crash(s, 'hard');
-    s.grounded = true; s.pos.y = gr.h + P.clear; setPlaneAttitude(s, Math.atan2(_f.x, -_f.z), 0); s.vel.set(0, 0, 0); s.lift = 0; return 'touchdown';
+    s.pos.y = gr.h + P.clear;
+    if (s.vel.y < 0) s.vel.y = 0;
+    if (_f.y < -0.05) { _q.setFromAxisAngle(X, 0.5 * dt); s.quat.multiply(_q); s.quat.normalize(); }
+    return 'skyfloor';
   }
   return null;
 }
-// ---- seaplane: the e-plane's flight model with SEAPLANE numbers. Floats on water (gentle touchdown), any land / tree contact or a hard splash is a crash.
+// ---- seaplane: the e-plane's flight model with SEAPLANE numbers. The soft sky floor is the float surface.
+// A hard arrival bounces onto the floats. There is no land to crash into.
 export function stepSeaplane(s, inp, world, dt, t = 0) {
   if (s.crashed) return null;
   const P = SEAPLANE, hasPower = s.battery > 0;
@@ -200,14 +197,12 @@ export function stepSeaplane(s, inp, world, dt, t = 0) {
     s.vel.copy(_f).multiplyScalar(s.v); s.vel.y -= (1 - lift) * 14;
     s.pos.addScaledVector(s.vel, dt);
     if (s.pos.y > 2600) s.pos.y = 2600;
-    if (world.treeHit(s.pos.x, s.pos.y - 1, s.pos.z, 3)) return crash(s, 'tree');
     const gr = world.groundAt(s.pos.x, s.pos.z);
     if (s.pos.y < gr.h + P.float) {
-      if (!gr.water) return crash(s, 'terrain');
       _r.set(1, 0, 0).applyQuaternion(s.quat);
       const gentle = s.vel.y > -P.touchSink && s.v < P.touchSpeed && _f.y > -0.25 && _f.y < 0.4 && Math.abs(_r.y) < 0.35;
-      // any open water works as a runway. A hard hit or nose-dive never crashes (cozy): it bounces and splashes down on the floats.
-      const hitVy = s.vel.y; s.grounded = true; s.onWater = true; s.hd = Math.atan2(_f.x, -_f.z); s.pos.y = P.float; s.vel.y = 0; setPlaneAttitude(s, s.hd, 0); s.bounceT = 0;
+      // The whole sky floor floats you. A hard hit or nose-dive never crashes: it bounces onto the floats.
+      const hitVy = s.vel.y; s.grounded = true; s.onWater = true; s.hd = Math.atan2(_f.x, -_f.z); s.pos.y = gr.h + P.float; s.vel.y = 0; setPlaneAttitude(s, s.hd, 0); s.bounceT = 0;
       if (!gentle) { s.v *= 0.45; s.bounce = clamp(0.5 + (-hitVy) * 0.04, 0.5, 1.4); s.splash = 1; return 'splashdown:hard'; }
       s.v *= 0.8; s.bounce = 0.12; s.splash = 0.6; return 'splashdown';
     }
@@ -218,11 +213,10 @@ export function stepSeaplane(s, inp, world, dt, t = 0) {
   let hd = s.hd; hd += (inp.yaw + inp.roll * 0.6) * 0.7 * clamp(s.v / 5 + 0.3, 0, 1) * dt; s.hd = hd;
   s.v = Math.max(0, s.v + (thrust - 0.0034 * s.v * s.v - 0.05 * s.v - 0.3 - 7 * Math.exp(-(((s.v - 13) / 7) ** 2)) - brake * 3) * dt); // water drag with a 'hump' before the floats get on the step if (s.v < 0.05 && thrust === 0) s.v = 0;
   const nx = s.pos.x + Math.sin(hd) * s.v * dt, nz = s.pos.z - Math.cos(hd) * s.v * dt, gr = world.groundAt(nx, nz);
-  if (!gr.water) { if (s.v > 2.5) return crash(s, 'terrain'); s.v = 0; } // ran aground: slow nudges just stop, fast ones crash
-  else { s.pos.x = nx; s.pos.z = nz; }
+  s.pos.x = nx; s.pos.z = nz;
   const plane = s.v / P.rotate, bob = 1 - clamp(plane, 0, 0.8);
   s.bounceT = (s.bounceT || 0) + dt; const bnc = (s.bounce || 0) * Math.exp(-2.5 * s.bounceT) * Math.abs(Math.sin(s.bounceT * 5.5));
-  s.pos.y = P.float + Math.sin(t * 1.5) * 0.14 * bob + bnc;
+  s.pos.y = gr.h + P.float + Math.sin(t * 1.5) * 0.14 * bob + bnc;
   let pitch = Math.sin(t * 1.1 + 0.6) * 0.012 * bob + clamp(s.throttle * 0.05 - plane * 0.03, -0.02, 0.04), roll = Math.sin(t * 0.9) * 0.02 * bob;
   if (inp.pitch > 0.2 && s.v > P.rotate) { s.grounded = false; s.onWater = false; s.pos.y += 0.6; setPlaneAttitude(s, hd, 0.14); s.vel.set(Math.sin(hd) * s.v, 0, -Math.cos(hd) * s.v); return 'liftoff'; }
   setPlaneAttitude(s, hd, pitch, roll); s.vel.set(Math.sin(hd) * s.v, 0, -Math.cos(hd) * s.v);

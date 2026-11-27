@@ -4,7 +4,7 @@ SKYCHARGE: a cozy always-daytime sky-exploration game by Matthew "Frog" Finley a
 
 **Play it in the browser:** <https://m-fin.github.io/skycharge/>
 
-Fly a little electric plane (and a blimp) over islands, villages, farms, and harbor towns. Keep your battery topped up at charging stations, collect coins, run missions, chill in your cabin, and hunt for the secret cows. No combat, just flying.
+Fly a little electric plane (and a blimp) through open sky. There is no land: clouds, the sky dome and orange charge rings are the world, and a soft sky floor keeps you from falling out of it. Keep your battery topped up at the charge rings, collect coins, run missions and chill in your cabin. No combat, just flying.
 
 Built with plain JavaScript ES modules and [three.js](https://threejs.org/) 0.186.1 (vendored in `vendor/`, no CDN). Plays with an Xbox controller or keyboard.
 

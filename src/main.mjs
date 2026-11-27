@@ -1,7 +1,7 @@
 // SKYCHARGE (working title) — browser plane game MVP. Fixed 60 Hz sim, three.js render.
 // URL params: ?seed=1  &manual=1 (no RAF loop; drive with window.pg)  &w=&h= (fixed canvas size)  &hud=0
 import * as THREE from '../vendor/three.module.js';
-import { createWorld } from './world.mjs';
+import { createWorld, keepInSky } from './world.mjs';
 import { createWeather, WEATHERS } from './weather.mjs';
 import * as life from './life/index.mjs';
 import { buildPlaneMesh, buildBlimpMesh, buildGliderMesh, buildSeaplaneMesh, newPlane, newBlimp, newGlider, newSeaplane, stepPlane, stepBlimp, stepGlider, stepSeaplane, headingOf, setPlaneAttitude, PLANE, BLIMP, GLIDER, SEAPLANE, VEHICLES, MODS, buildRoadsterMesh, buildScooterMesh, newHover, stepHover, HOVER } from './vehicles.mjs';
@@ -31,7 +31,7 @@ const camera = new THREE.PerspectiveCamera(62, 16 / 9, NEAR_CABIN, 30000);
 scene.matrixAutoUpdate = false; // the scene root never moves; lets the baked world matrices (world.mjs) skip the per-frame update
 function resize() { const w = FW || innerWidth, h = FH || innerHeight; renderer.setSize(w, h, !FW); if (FW) { canvas.style.width = '100vw'; canvas.style.height = '100vh'; } camera.aspect = w / h; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
-const hemi = new THREE.HemisphereLight(0xd7e8ff, 0x5d6b40, 1.5); scene.add(hemi);
+const hemi = new THREE.HemisphereLight(0xd7e8ff, 0x8eb6dc, 1.5); scene.add(hemi); // sky below as well as above: no green ground bounce
 const sun = new THREE.DirectionalLight(0xfff0d4, 2.6); sun.position.set(0.55, 0.8, 0.25).multiplyScalar(1000); scene.add(sun);
 
 const world = createWorld(seed); scene.add(world.group);
@@ -192,11 +192,11 @@ function respawn(kind = G.vehicle, st = null) {
 function switchVehicle() {
   if (cur().crashed) return;
   if (G.mission) failMission('Switched vehicle');
-  if (G.vehicle === 'blimp') { spawnGlider(); G.vehicle = 'glider'; toast('🪂 Switched to HANG GLIDER at the summit launch — no motor: find the faint rising columns (thermals) and circle in them, or ride the windward ridge'); }
-  else if (G.vehicle === 'glider') { spawnSeaplane(); G.vehicle = 'seaplane'; toast('🛩 Switched to SEAPLANE at the Lagoon Dock — RT for throttle, pull back above 100 km/h to lift off the water'); }
+  if (G.vehicle === 'blimp') { spawnGlider(); G.vehicle = 'glider'; toast('🪂 Switched to HANG GLIDER at the sky launch — no motor: find the faint rising columns (thermals) and circle in them'); }
+  else if (G.vehicle === 'glider') { spawnSeaplane(); G.vehicle = 'seaplane'; toast('🛩 Switched to SEAPLANE at the Lagoon Dock — RT for throttle, pull back above 100 km/h to lift off the sky floor'); }
   else if (G.vehicle === 'plane') { const p = G.plane, b = G.blimp; b.pos.copy(p.pos); b.yaw = headingOf(p); b.v = Math.min(p.v, 8); b.vy = 0; b.yr = 0; b.pos.y = Math.max(b.pos.y, world.groundAt(b.pos.x, b.pos.z).h + BLIMP.clear + 4); G.vehicle = 'blimp'; toast('🎈 Switched to BLIMP — left stick to drift, RT/LT to rise and sink'); }
   else if (G.vehicle === 'seaplane') { const b = G.seaplane, r = G.roadster, agl = b.pos.y - world.groundAt(b.pos.x, b.pos.z).h - SEAPLANE.float;
-    if (!b.grounded && agl > 30) { r.pos.copy(b.pos); r.yaw = headingOf(b); r.v = Math.min(b.v, 40); r.vy = 0; r.hover = true; r.landed = r.grounded = false; G.vehicle = 'roadster'; toast('🏎 Switched to ROADSTER — hovering on its air jets. LT to sink, RT to climb, land anywhere on its wheels'); }
+    if (!b.grounded && agl > 30) { r.pos.copy(b.pos); r.yaw = headingOf(b); r.v = Math.min(b.v, 40); r.vy = 0; r.hover = true; r.landed = r.grounded = false; G.vehicle = 'roadster'; toast('🏎 Switched to ROADSTER — hovering on its air jets. LT to sink, RT to climb, settle on the sky floor'); }
     else { const st = respawn('roadster', world.nearest(b.pos.x, b.pos.z).st); toast(`🏎 Switched to ROADSTER at ${st.name} — stick to drive, RT fires the air jets to lift off (unlimited air)`); } }
   else if (G.vehicle === 'roadster') { const r = G.roadster, k = G.scooter; k.pos.copy(r.pos); k.pos.y += HOVER.scooter.clear - HOVER.roadster.clear; k.yaw = r.yaw; k.v = Math.min(r.v, HOVER.scooter.airTop); k.vy = 0; k.hover = r.hover; k.landed = k.grounded = !r.hover; G.vehicle = 'scooter';
     toast('🛵 Switched to SKY SCOOTER — stick to ride, RT to hop up on the jetpack air pods'); }
@@ -219,11 +219,11 @@ function setChill(on, quiet) {
   if (!quiet) toast(on ? (G.vehicle === 'glider' ? '🪂 Sky drift — hands off, the glider trims itself and circles in rising air. Move a stick to take over.' : '☕ Cabin chill — autopilot is cruising. Move a stick to take over.') : '🕹 You have control');
 }
 const _apF = new THREE.Vector3(), _apR = new THREE.Vector3(); // autopilot scratch vectors (runs every sim tick in chill)
-// autopilot: synthesises inputs that hold a level cruise; turns back toward the island when far out
+// autopilot: synthesises inputs that hold a level cruise; turns back toward home when far out
 function autopilot() {
   const v = cur(), out = { pitch: 0, roll: 0, yaw: 0, up: 0, down: 0 }, ap = G.ap, toCenter = Math.atan2(-v.pos.x, v.pos.z), far = Math.hypot(v.pos.x, v.pos.z) > 2300;
   const hd = headingOf(v); let err = ((toCenter - hd + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-  if (G.vehicle === 'glider') { // hands-off glide: trim speed (pitch 0), wings level, circle gently in rising air, steer away from high ground
+  if (G.vehicle === 'glider') { // hands-off glide: trim speed (pitch 0), wings level, circle gently in rising air
     if (v.grounded) return out; const f = _apF.set(0, 0, -1).applyQuaternion(v.quat), r = _apR.set(1, 0, 0).applyQuaternion(v.quat);
     let ahead = 0; for (const d of [120, 260]) ahead = Math.max(ahead, world.groundAt(v.pos.x + f.x * d, v.pos.z + f.z * d).h);
     const want = ahead > v.pos.y - 70 ? 0.45 : v.lift > 0.6 ? 0.3 : far ? Math.max(-0.3, Math.min(0.3, err * 0.6)) : 0;
@@ -246,26 +246,28 @@ function autopilot() {
 }
 
 const ZERO = { pitch: 0, roll: 0, yaw: 0, up: 0, down: 0 };
+function holdInSky(v) { if (!v || !v.pos) return; if (keepInSky(v.pos)) { if (v.vel) v.vel.set(0, 0, 0); v.v = 0; if (v.vy != null) v.vy = 0; } }
 let lastEvent = null;
 function simTick(inp) {
   G.t += DT; world.update(G.t);
   { // breezy days: a gentle sideways push on the slow fliers (blimp, glider) while airborne; nothing on clear / foggy days
     const v = cur(), b = weather.cur.breeze; if (b > 0.5 && (G.vehicle === 'blimp' || (G.vehicle === 'glider' && !v.grounded && !v.crashed))) { const k = 0.12 * (b - 0.5) * 2 * DT; v.pos.x += weather.wind.x * k; v.pos.z += weather.wind.z * k; } }
   if (winged()) {
-    const k = G.vehicle, p = G[k], where = k === 'glider' ? 'the summit launch' : k === 'seaplane' ? 'the Lagoon Dock' : 'the nearest station';
-    if (p.crashed) { p.crashed.t += DT; if (p.crashed.t > 2.4) { const st = respawn(k, k === 'plane' ? world.nearest(p.crashed.pos.x, p.crashed.pos.z).st : null); toast(`Respawned at ${st.name}`); } return; }
+    const k = G.vehicle, p = G[k], where = k === 'glider' ? 'the sky launch' : k === 'seaplane' ? 'the Lagoon Dock' : 'the nearest station';
+    if (p.crashed) { holdInSky(p); p.crashed.t += DT; if (p.crashed.t > 2.4) { const st = respawn(k, k === 'plane' ? world.nearest(p.crashed.pos.x, p.crashed.pos.z).st : null); toast(`Respawned at ${st.name}`); } return; }
     const ev = (k === 'glider' ? stepGlider : k === 'seaplane' ? stepSeaplane : stepPlane)(p, G.chill ? autopilot() : inp, world, DT, G.t);
     if (ev && ev.startsWith('crash')) { setChill(false, true); failMission('Crashed'); if (audio) audio.crash();
-      toast({ 'crash:splash': k === 'seaplane' ? `💦 Hit the water too hard! Respawning at ${where}…` : `💦 Splashdown! Respawning at ${where}…`, 'crash:hard': `💥 Hard impact! Respawning at ${where}…`, 'crash:terrain': `💥 Hit the terrain! Respawning at ${where}…`, 'crash:tree': `🌲 Hit a tree! Respawning at ${where}…` }[ev]); }
-    if (ev === 'touchdown') toast(k === 'glider' ? '🪂 Landed — press A / R to relaunch from the summit' : world.inStation(p.pos.x, p.pos.z) ? '🛬 Nice landing — slow down below 20 km/h to charge' : '🛬 Touchdown');
-    if (ev === 'splashdown') toast(world.nearDock(p.pos.x, p.pos.z, 200) ? '🌊 Smooth water landing — taxi to the dock and slow down to charge' : '🌊 Smooth water landing — you can taxi and take off again');
-    if (ev === 'splashdown:hard') toast('💦 Big splash! Bounced down onto the floats — you can taxi and take off again');
+      toast(`Respawning at ${where}…`); }
+    if (ev === 'touchdown') toast(k === 'glider' ? '🪂 Caught by the sky floor — press A / R to relaunch' : world.inStation(p.pos.x, p.pos.z) ? '🛬 Settled in the charge ring — slow down to charge' : '🛬 Sky floor');
+    if (ev === 'splashdown') toast(world.nearDock(p.pos.x, p.pos.z, 200) ? '🌊 Floated down by the dock — slow down to charge' : '🌊 Floated onto the sky floor — you can taxi and take off again');
+    if (ev === 'splashdown:hard') toast('💦 Big bounce! Settled onto the floats — you can taxi and take off again');
     if (ev && ev.startsWith('splashdown')) { splashBurst(p, ev === 'splashdown:hard' ? 1.6 : 1); achieve('first_water_landing'); }
     lastEvent = ev;
   } else if (hovering()) { const ev = stepHover(cur(), G.chill ? autopilot() : inp, world, DT, G.t); lastEvent = ev || lastEvent;
     if (ev === 'liftoff') toast('💨 Air jets on — hovering. Unlimited compressed air: RT climb, LT sink, stick to fly', 2.5);
-    if (ev === 'touchdown') toast(world.chargeBay(cur().pos.x, cur().pos.z) ? '🛬 Landed in a charging bay — stop to plug in' : '🛬 Back on the wheels', 2.2); }
+    if (ev === 'touchdown') toast(world.chargeBay(cur().pos.x, cur().pos.z) ? '🛬 Settled in a charging bay — stop to plug in' : '🛬 Back on the sky floor', 2.2); }
   else stepBlimp(G.blimp, G.chill ? autopilot() : inp, world, DT, G.t);
+  holdInSky(cur());
   coins.update(G.t);
   const v = cur(); if (v.crashed) return;
   if (v.charging) achieve('first_charge');
@@ -383,11 +385,11 @@ function updateHUD(dt) {
   else if (gld) { if (v.grounded) st = 'LANDED — A / R TO RELAUNCH'; else if (v.stalled) { st = 'STALL — NOSE DOWN'; cls = 'warn'; } else if (v.lift > 1.2) { st = '🌀 IN RISING AIR — CIRCLE TO CLIMB'; cls = 'good'; } }
   else if (v.charging) { st = v.battery >= 99.5 ? '⚡ FULLY CHARGED' : `⚡ CHARGING ${Math.round(v.battery)}%`; cls = 'good'; }
   else if (v.battery <= 0 && hovering()) { st = 'BATTERY EMPTY — AIR JETS STILL WORK: HOVER TO A ⚡ STATION'; cls = 'warn'; }
-  else if (v.battery <= 0) { st = G.vehicle === 'plane' ? 'BATTERY EMPTY — GLIDE TO A STATION' : sea ? 'BATTERY EMPTY — GLIDE TO A GENTLE WATER LANDING' : 'BATTERY EMPTY — DRIFTING'; cls = 'warn'; }
+  else if (v.battery <= 0) { st = G.vehicle === 'plane' ? 'BATTERY EMPTY — GLIDE TO A STATION' : sea ? 'BATTERY EMPTY — GLIDE DOWN TO THE SKY FLOOR' : 'BATTERY EMPTY — DRIFTING'; cls = 'warn'; }
   else if (v.battery < 20) { st = sea ? `LOW BATTERY ${Math.round(v.battery)}% — HEAD FOR THE ⚓ LAGOON DOCK` : `LOW BATTERY ${Math.round(v.battery)}% — FIND A ⚡ STATION`; cls = 'warn'; }
   else if (winged() && !v.grounded && v.stalled) { st = 'STALL — NOSE DOWN, ADD THROTTLE'; cls = 'warn'; }
   else if (sea && v.grounded && world.nearDock(v.pos.x, v.pos.z, 22) && v.v >= 6) { st = 'AT THE DOCK — SLOW DOWN TO CHARGE'; }
-  else if (G.vehicle === 'plane' && v.grounded && world.inStation(v.pos.x, v.pos.z) && v.v >= 6) { st = 'ON RUNWAY — SLOW DOWN TO CHARGE'; }
+  else if (G.vehicle === 'plane' && v.grounded && world.inStation(v.pos.x, v.pos.z) && v.v >= 6) { st = 'IN THE CHARGE RING — SLOW DOWN TO CHARGE'; }
   const s = $('status'); T(s, st || ''); CL(s, st ? 'show ' + cls : '');
   T($('chilltxt'), gld ? `${v.grounded ? 'Landed' : v.lift > 0.6 ? 'Circling in rising air' : 'Hands-off glide'} · ${Math.round(spd)} ${kt ? 'kt' : 'km/h'} · ${climbEMA >= 0 ? '▲' : '▼'} ${Math.abs(climbEMA).toFixed(1)} m/s · ${Math.round(v.pos.y)} m`
     : `${(winged() ? (v.grounded ? (sea ? 'Floating' : 'Parked') : 'Autopilot cruise') : hovering() ? (v.landed ? 'Parked' : 'Hover cruise · air ∞') : (G.ap && G.ap.hold ? 'Hovering' : 'Autopilot drift'))} · ${Math.round(spd)} ${kt ? 'kt' : 'km/h'} · ⚡ ${Math.round(v.battery)}%${v.charging ? ' charging' : ''}`);
@@ -418,7 +420,7 @@ function buildMenu() {
   H(`MISSIONS · ${Object.keys(P.completed).length}/${missions.defs.length} done · ₿ ${P.coins}`);
   for (const d of missions.defs) { const done = P.completed[d.id], best = P.best[d.id], s0 = world.stations[d.start];
     I(`${done ? '✓' : '○'} ${d.name}`, `${LABEL[d.vehicle].split(' ')[0]} ${d.vehicle} · starts at ${s0.name} · ${done ? `+${Math.round(d.reward / 4)} ₿ repeat` : `+${d.reward} ₿`}${best != null ? ` · best ${fmt(best)}` : ''} — ${d.desc}`,
-      () => { G.waypoint = d.start; closeMenu(); toast(`📍 ${s0.name} marked — ${d.vehicle === 'blimp' ? 'settle the blimp on its pad' : 'land and stop on its runway'}, then press B / Enter`); }, done ? 'done' : ''); }
+      () => { G.waypoint = d.start; closeMenu(); toast(`📍 ${s0.name} marked — ${d.vehicle === 'blimp' ? 'settle the blimp in its charge ring' : 'slow down inside its charge ring'}, then press B / Enter`); }, done ? 'done' : ''); }
   H('UPGRADES');
   for (const k of Object.keys(UPG)) { const u = UPG[k], own = P.upgrades[k];
     I(`${own ? '✓' : '🛒'} ${u.name}`, own ? `owned · ${u.sub}` : `${u.cost} ₿ · ${u.sub}${P.coins < u.cost ? ` · need ${u.cost - P.coins} more` : ''}`, () => buyUpgrade(k), own ? 'done' : ''); }
@@ -534,7 +536,7 @@ const life2 = createLifecycle({ canvas, getAudioCtx: () => audioCtx,
   onSleep: () => { try { persist(); } catch (e) { /* storage full / blocked */ } if (!G.paused) openMenu(); },
   onPauseRequest: () => { if (!G.paused) openMenu(); } });
 window.pg.lifecycle = life2; window.pg.achieved = achieved;
-signIn(); setPresence('Exploring the islands');
+signIn(); setPresence('Exploring the open sky');
 if (!manual) life2.loop((dt) => frame(dt, merged()));
 else { pg.render(); }
 document.title = document.title + (manual ? ' [manual]' : '');

@@ -15,7 +15,9 @@ export const modules = { settlements, animals, people, sea, traffic };
 
 const S = { on: false, ms: 0, msAvg: 0, frames: 0, initMs: 0, tq: null };
 export function init(scene, tq, opts = {}) {
-  const t0 = performance.now(); S.tq = tq; getLayout(tq, opts.seed || 1);
+  const t0 = performance.now(); S.tq = tq;
+  // Open sky has no land for herds, villages, boats or roads. Leave the modules unwired so they add no ground meshes.
+  if (tq && tq.openSky) { S.openSky = true; S.on = false; S.initMs = performance.now() - t0 + 1; return S; }
   settlements.init(scene, tq); animals.init(scene, tq, opts); people.init(scene, tq); sea.init(scene, tq); traffic.init(scene, tq);
   S.initMs = performance.now() - t0; S.on = true; return S;
 }
@@ -24,7 +26,10 @@ export function update(dt, p) {
   settlements.update(dt, p); animals.update(dt, p); people.update(dt, p); sea.update(dt, p); traffic.update(dt, p);
   S.ms = performance.now() - t0; S.frames++; S.msAvg += (S.ms - S.msAvg) * 0.05;
 }
-export function stats() { return { initMs: Math.round(S.initMs), updateMs: +S.msAvg.toFixed(3), layout: summary(), settlements: settlements.stats(), animals: animals.stats(), people: people.stats(), sea: sea.stats(), traffic: traffic.stats() }; }
+export function stats() {
+  if (S.openSky) return { initMs: Math.round(S.initMs), updateMs: +S.msAvg.toFixed(3), openSky: true, layout: [], animals: { cows: 0 }, settlements: {}, people: {}, sea: {}, traffic: {} };
+  return { initMs: Math.round(S.initMs), updateMs: +S.msAvg.toFixed(3), layout: summary(), settlements: settlements.stats(), animals: animals.stats(), people: people.stats(), sea: sea.stats(), traffic: traffic.stats() };
+}
 function summary() { const L = getLayout(S.tq); return L.pockets.map((p) => ({ type: p.type, x: Math.round(p.x), z: Math.round(p.z), r: p.r, near: p.station || '' })); }
 export { getLayout };
 export const triggerWhale = sea.triggerWhale, triggerDolphins = sea.triggerDolphins;

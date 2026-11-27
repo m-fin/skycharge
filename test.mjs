@@ -28,9 +28,11 @@ try {
     pg.chill(true); let alts = []; for (let k = 0; k < 7200; k++) { info = pg.step(1); if (k % 600 === 0) alts.push(info.y); if (info.crashed) break; }
     ok('chill_autopilot_120s', !info.crashed && info.chill, { alts, info });
     pg.chill(false);
-    // 4 dive into the ground -> crash then respawn
-    pg.set({ heading: 0, pitch: -0.6, speed: 60 }); for (let k = 0; k < 1800 && !pg.info().crashed; k++) pg.step(1, {}); const crashed = pg.info().crashed; pg.step(170); info = pg.info();
-    ok('crash_respawn', crashed && !info.crashed && info.grounded, { info });
+    // 4 a hard dive meets the soft sky floor: no crash, no NaN, then respawn still puts you at a station
+    pg.set({ heading: 0, pitch: -0.6, speed: 60 }); let minY = 1e9, finite = true, crashed = false;
+    for (let k = 0; k < 1800; k++) { const inf = pg.step(1, {}); finite = finite && Number.isFinite(inf.y) && Number.isFinite(inf.x) && Number.isFinite(inf.z); minY = Math.min(minY, inf.y); crashed = crashed || inf.crashed; if (inf.grounded && inf.y < 30) break; }
+    const dived = pg.info(); pg.press('respawn'); pg.step(5); info = pg.info();
+    ok('skyfloor_catches_dive_and_respawn', !crashed && !dived.crashed && finite && minY >= dived.ground - 0.05 && info.grounded && !info.crashed && Number.isFinite(info.y), { dived, info, minY });
     // 5 approach + gentle landing on a runway (simple glideslope controller standing in for a player) -> charging
     const s1 = st[1]; pg.respawn(1, 'plane'); const p = pg.G.plane; const back = 330; p.pos.x = s1.x - Math.sin(s1.hd) * back; p.pos.z = s1.z + Math.cos(s1.hd) * back; pg.set({ grounded: false, y: s1.h + 16, speed: 33, heading: s1.hd, pitch: 0, throttle: 0.3, battery: 40 });
     let td = null; const f = new pg.THREE.Vector3();
@@ -132,10 +134,12 @@ try {
     ok('glider_thermals_placed_and_visible', w.thermals.length >= 4 && w.thermals.length <= 6 && w.thermalGroup.visible && w.thermals.every((t) => t.core > 2.5 && t.core < 3.6) && w.thermals.some((t) => t.kind === 'turbine') && w.thermals.some((t) => t.kind === 'field'), { n: w.thermals.length });
     // ridge lift: somewhere on the windward (west-facing) slope of the high hills there is rising air
     let ridge = 0; for (let x = -3000; x < 3000; x += 40) for (let z = -3000; z < 3000; z += 80) { const h = w.heightAt(x, z); if (h > 230) ridge = Math.max(ridge, w.liftAt(x, h + 40, z) - (w.thermals.some((t) => Math.hypot(t.x - x, t.z - z) < 300) ? 99 : 0)); }
-    ok('glider_ridge_lift_windward', ridge > 1, { ridge: +ridge.toFixed(2) });
-    // a crash respawns at the launch
-    pg.set({ heading: 0, pitch: -0.3, speed: 15 }); pg.G.glider.pos.y = w.heightAt(g.pos.x, g.pos.z) + 3; let cr = false; for (let k = 0; k < 600 && !cr; k++) cr = pg.step(1, { pitch: -1 }).crashed; pg.step(170);
-    ok('glider_crash_respawns_at_launch', cr && !pg.info().crashed && Math.hypot(g.pos.x - w.launch.x, g.pos.z - w.launch.z) < 20, { info: pg.info() });
+    ok('glider_open_sky_no_ridge', ridge === 0 && w.openSky && w.heightAt(0, 0) <= 1, { ridge });
+    // the sky floor catches a dive: no crash, position stays finite, respawn returns to the launch
+    pg.set({ heading: 0, pitch: -0.3, speed: 15 }); pg.G.glider.pos.y = w.heightAt(g.pos.x, g.pos.z) + 3; let cr = false, finite = true;
+    for (let k = 0; k < 600; k++) { const inf = pg.step(1, { pitch: -1 }); cr = cr || inf.crashed; finite = finite && Number.isFinite(inf.y); }
+    pg.press('respawn'); pg.step(5);
+    ok('glider_skyfloor_respawns_at_launch', !cr && finite && !pg.info().crashed && Math.hypot(g.pos.x - w.launch.x, g.pos.z - w.launch.z) < 20 && g.pos.y >= w.launch.h, { info: pg.info() });
     // no missions / blimp coins for the glider
     const bc = pg.coins.list.find((c) => c.kind === 'blimp' && !c.collected); pg.set({ x: bc.x, z: bc.z, y: bc.y, speed: 12 }); pg.step(1); pg.press('b'); ok('glider_no_blimp_coin_no_mission', !bc.collected && !pg.G.mission, {});
     // seaplane: spawns floating at the lagoon dock and charges there
@@ -159,7 +163,7 @@ try {
       ok('seaplane_hard_water_hit_bounces_no_crash', !cr && ev === 'splashdown:hard' && sp.onWater && !pg.info().crashed && bounced > 0.2 && Math.hypot(sp.pos.x - hx, sp.pos.z - hz) < 400, { ev, bounced: +bounced.toFixed(2), info: pg.info() }); }
     // any ground contact (land) is a crash
     const s0p = pg.stations[0]; pg.set({ x: s0p.spawnX, z: s0p.spawnZ, y: s0p.h + 2.6, grounded: false, speed: 30, heading: s0p.hd, pitch: -0.02 }); let gc = false; for (let k = 0; k < 300 && !gc; k++) gc = pg.step(1).crashed;
-    ok('seaplane_ground_contact_crashes', gc && sp.crashed && sp.crashed.why === 'terrain', {}); pg.step(170);
+    ok('seaplane_sky_floor_floats', !gc && sp.onWater && !sp.crashed && Number.isFinite(sp.pos.y), { y: sp.pos.y }); pg.step(30);
     // existing missions stay restricted to their vehicles
     pg.respawn(0, 'seaplane'); pg.press('b'); const noSeaMission = !pg.G.mission; ok('missions_stay_vehicle_restricted', noSeaMission && pg.missions.defs.every((d) => d.vehicle === 'plane' || d.vehicle === 'blimp'), {});
     pg.vehicle('glider'); pg.save(); A.setLift = oL; A.setOnWater = oW; return out;
@@ -227,15 +231,17 @@ try {
     let std = false; for (let k = 0; k < 1800 && !std; k++) std = pg.step(1, { down: 1 }).lastEvent === 'touchdown'; ok('scooter_lands_on_wheels', std && S.landed, {});
     // seaplane: land on open water far from the dock, splash + wake, float, taxi, take off again
     pg.respawn(0, 'seaplane'); const sp = pg.G.seaplane, D = w.dock; let ox = null, oz = null;
-    for (let r = 600; r < 2600 && ox == null; r += 100) for (let a = 0; a < 6.28 && ox == null; a += 0.4) { const x = D.x + Math.cos(a) * r, z = D.z + Math.sin(a) * r; let clear = true; for (let d = -300; d <= 300; d += 30) if (w.heightAt(x, z - d) > -2) clear = false; if (clear) { ox = x; oz = z; } }
+    if (w.openSky) { ox = D.x + 900; oz = D.z + 200; }
+    else { for (let r = 600; r < 2600 && ox == null; r += 100) for (let a = 0; a < 6.28 && ox == null; a += 0.4) { const x = D.x + Math.cos(a) * r, z = D.z + Math.sin(a) * r; let clear = true; for (let d = -300; d <= 300; d += 30) if (w.heightAt(x, z - d) > -2) clear = false; if (clear) { ox = x; oz = z; } } }
     pg.set({ x: ox, z: oz + 140, y: 14, grounded: false, speed: 30, heading: 0, pitch: -0.05, throttle: 0.1 }); let ev = null; for (let k = 0; k < 900 && !sp.grounded; k++) ev = pg.step(1, { pitch: sp.vel.y < -2 ? 0.3 : 0 }).lastEvent;
     const wake = (pg.step(30, { up: 0.6 }), pg.fx.alive); pg.step(300, { down: 1 }); const floating = sp.onWater && !sp.crashed;
     let lo = false; for (let k = 0; k < 1500 && !lo; k++) { const inf = pg.step(1, { up: 1, pitch: sp.v > 28 ? 0.5 : 0 }); lo = !inf.grounded && inf.y > 15; }
     ok('seaplane_lands_on_any_open_water', ev && ev.startsWith('splashdown') && Math.hypot(sp.pos.x - D.x, sp.pos.z - D.z) > 400 && floating && wake > 3 && lo, { ev, distFromDock: Math.round(Math.hypot(ox - D.x, oz - D.z)), wake });
     // stations + dock + coins
     ok('skycharger_stations_have_bays', w.stations.every((s) => s.bays && s.bays.length >= 3 && s.hoverSpawn && s.pylon) && w.stations.some((s) => s.name === 'Ridge Skycharger') && !w.stations.some((s) => /supercharger/i.test(s.name)), { names: w.stations.map((s) => s.name) });
-    let ring = null; w.group.traverse((o) => { if (o.geometry && o.geometry.type === 'RingGeometry' && o.renderOrder === 2) ring = o; }); const water = w.group.children.find((o) => o.name === 'water');
-    ok('dock_ring_draws_over_water', ring && ring.renderOrder > water.renderOrder && ring.material.transparent && ring.material.opacity === 1 && ring.position.y >= 0.3 && ring.parent === w.group, {});
+    let ring = null; w.group.traverse((o) => { if (o.geometry && o.geometry.type === 'RingGeometry' && o.renderOrder === 2) ring = o; });
+    const water = w.group.getObjectByName('water'), terrain = w.group.getObjectByName('terrain');
+    ok('charge_ring_floats_in_open_sky', !water && !terrain && w.openSky && ring && ring.renderOrder === 2 && ring.material.transparent && ring.material.opacity === 1 && ring.position.y >= 0.3 && ring.parent === w.group, {});
     const c0 = pg.coins.list[0].mesh.children[0]; ok('coins_are_bitcoin_faces', Array.isArray(c0.material) && c0.material.length === 3 && c0.material[1].map && c0.material[2].map && document.querySelector('.coinrow').textContent.includes('BTC'), {});
     return out; });
   // ---- round 8 (1.0.8): always-daytime weather (cumulus fly-through, wisps, cloud shadows, shafts, showers, valley mist, breeze)
@@ -245,8 +251,8 @@ try {
     ok('weather_starts_clear_daytime_no_cycle_in_tests', W.name === 'clear' && !W.auto && ['clear', 'cloudy', 'rain', 'fog'].join() === pg.weatherNames.join(), { info: W.info() });
     const seen = {}; for (const w of pg.weatherNames) { pg.setWeather(w); pg.step(700); seen[w] = W.info(); }
     ok('weather_moods_blend_in', seen.clear.visibleClouds < seen.cloudy.visibleClouds && seen.rain.showers >= 4 && seen.fog.mist > 0.9 && seen.cloudy.wind > seen.fog.wind * 2 && seen.rain.fogFar < seen.clear.fogFar && seen.fog.fogFar < 4000, { seen });
-    const g = pg.world.group.getObjectByName('terrain'), wg = W.group;
-    ok('weather_layers_present_and_cheap', !!g && typeof g.material.onBeforeCompile === 'function' && ['cumulus', 'wisps', 'sunshafts', 'showers', 'rainlines', 'mist'].every((n) => wg.getObjectByName(n)) && wg.children.length <= 9, { n: wg.children.length });
+    const terrain = pg.world.group.getObjectByName('terrain'), water = pg.world.group.getObjectByName('water'), wg = W.group;
+    ok('weather_layers_present_and_cheap', !terrain && !water && pg.world.openSky && ['cumulus', 'wisps', 'sunshafts', 'showers', 'rainlines', 'mist'].every((n) => wg.getObjectByName(n)) && wg.children.length <= 9, { n: wg.children.length });
     // fly through a cumulus: white-out fog while inside
     pg.setWeather('cloudy'); pg.step(300); const c = W.clouds.filter((x) => x.k > 0.9 && x.base > 300)[0]; pg.respawn(0, 'blimp'); pg.chill(true);
     const put = () => pg.set({ x: c.wx, z: c.wz, y: c.base + c.s * 0.45 }); let inside = 0; for (let i = 0; i < 90; i++) { put(); pg.step(1); } inside = W.info();
@@ -264,7 +270,7 @@ try {
     pg.setWeather('clear');
     // world life (src/life) is wired: init ran, update runs from pg.step / frame, nothing threw
     const L0 = pg.life.stats(); pg.step(120); const L1 = pg.life.stats();
-    ok('life_modules_wired', L0.initMs > 0 && L0.animals && L0.animals.cows > 50 && L0.layout.length >= 5 && typeof L1.updateMs === 'number', { initMs: L0.initMs, updateMs: L1.updateMs, cows: L0.animals.cows });
+    ok('life_modules_wired', L0.openSky === true && L0.animals && L0.animals.cows === 0 && L0.layout.length === 0 && typeof L1.updateMs === 'number', { initMs: L0.initMs, updateMs: L1.updateMs, cows: L0.animals.cows });
     return out;
   });
   // weather music (real decoder, embedded build only): layers load, mix while weather is on, crossfade, MP3 loop window

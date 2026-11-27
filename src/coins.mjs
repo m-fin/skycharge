@@ -17,7 +17,9 @@ export function createCoins(world, seed = 1) {
   const L = world.landmarks.lighthouse; if (L) for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; list.push({ id: `lh-${k}`, kind: 'landmark', x: L.x + Math.cos(a) * 55, y: L.top + 22, z: L.z + Math.sin(a) * 55 }); }
   world.landmarks.turbines.forEach((T, k) => list.push({ id: `wt-${k}`, kind: 'landmark', x: T.x + 35, y: T.top - 10, z: T.z + 35 }));
   // blimp-only coins: low over open land (12–18 m AGL)
-  let nb = 0; for (let t = 0; t < 4000 && nb < 12; t++) { const x = (R() - 0.5) * 5200, z = (R() - 0.5) * 5200, h = world.heightAt(x, z); if (h < 6 || h > 140 || world.inStation(x, z, 40)) continue;
+  let nb = 0; const sky = !!world.openSky; for (let t = 0; t < 4000 && nb < 12; t++) { const x = (R() - 0.5) * 5200, z = (R() - 0.5) * 5200, h = world.heightAt(x, z); if (world.inStation(x, z, 40)) continue;
+    if (sky) { if (world.nearDock && world.nearDock(x, z, 80)) continue; list.push({ id: `bl-${nb++}`, kind: 'blimp', x, y: gnd(x, z) + 15, z }); continue; }
+    if (h < 6 || h > 140) continue;
     if (Math.abs(gnd(x + 25, z) - h) > 6 || Math.abs(gnd(x, z + 25) - h) > 6) continue; list.push({ id: `bl-${nb++}`, kind: 'blimp', x, y: h + 15, z }); }
   // meshes
   const coinGeo = new THREE.CylinderGeometry(3, 3, 0.6, 28), rimGeo = new THREE.TorusGeometry(3, 0.35, 8, 28), bigGeo = new THREE.CylinderGeometry(4.6, 4.6, 0.7, 28), bigRim = new THREE.TorusGeometry(4.6, 0.55, 8, 28);

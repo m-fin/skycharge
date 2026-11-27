@@ -85,40 +85,14 @@ fi
 rm -f "$LAYOUT"/*.html "$LAYOUT"/*.js
 cp "$WWW/index.html" "$WWW/boot.js" "$WWW/shim.js" "$WWW/game.js" "$LAYOUT/"
 
-# Music, same selection as the old pack-legacy.sh: the two loop MP3s are required,
-# 22.05 kHz weather WAVs are included when present. Never copy OGG/Opus.
+# Music the EdgeHTML loader reads from audio/music/out/ (src/main.mjs): the two
+# loop MP3s and the three 22.05 kHz weather WAVs. stage_music.py copies
+# xbox22k/ when those masters exist, otherwise resamples
+# weather_*_layer.wav from this directory into xbox22k/. Missing files exit
+# non-zero. Never copy OGG/Opus.
 rm -rf "$LAYOUT/audio"
 mkdir -p "$LAYOUT/audio/music/out"
-missing=()
-for f in cabin_chill_loop.mp3 flight_theme_loop.mp3; do
-  [[ -f "$MUS/$f" ]] || missing+=("$MUS/$f")
-done
-if ((${#missing[@]})); then
-  echo "missing music the EdgeHTML package loads (MP3 only):" >&2
-  printf '  %s\n' "${missing[@]}" >&2
-  echo "Put the loops in audio/music/out/ (or set SKYCHARGE_MUSIC_DIR). Weather layers are optional: audio/music/out/xbox22k/weather_{rain,fog,cloudy}_layer.wav" >&2
-  exit 1
-fi
-python3 - "$MUS/cabin_chill_loop.mp3" "$MUS/flight_theme_loop.mp3" <<'PY'
-import sys
-for path in sys.argv[1:]:
-    sig = open(path, 'rb').read(4)
-    if sig[:3] == b'ID3' or (len(sig) >= 2 and sig[0] == 0xFF and (sig[1] & 0xE0) == 0xE0):
-        continue
-    sys.exit(f'{path} is not an MP3 (header {sig!r}). EdgeHTML cannot play Ogg; do not substitute an .ogg file.')
-PY
-cp "$MUS/cabin_chill_loop.mp3" "$MUS/flight_theme_loop.mp3" "$LAYOUT/audio/music/out/"
-for k in rain fog cloudy; do
-  wav="$MUS/xbox22k/weather_${k}_layer.wav"
-  if [[ -f "$wav" ]]; then
-    sig="$(od -An -tx1 -N4 "$wav" | tr -d ' ')"
-    if [[ "$sig" != "52494646" ]]; then
-      echo "weather layer is not a WAV (RIFF): $wav" >&2
-      exit 1
-    fi
-    cp "$wav" "$LAYOUT/audio/music/out/"
-  fi
-done
+python3 "$PWD/stage_music.py" "$MUS" "$LAYOUT/audio/music/out"
 if find "$LAYOUT" -type f \( -iname '*.ogg' -o -iname '*.oga' -o -iname '*.opus' \) | grep -q .; then
   echo "OGG/Opus file in the package layout" >&2
   exit 1
@@ -202,7 +176,10 @@ for required in (
 ):
     if required not in manifest:
         sys.exit('unpacked manifest lost ' + required)
-for name in ('cabin_chill_loop.mp3', 'flight_theme_loop.mp3'):
+for name in (
+    'cabin_chill_loop.mp3', 'flight_theme_loop.mp3',
+    'weather_rain_layer.wav', 'weather_fog_layer.wav', 'weather_cloudy_layer.wav',
+):
     if not (root / 'audio' / 'music' / 'out' / name).is_file():
         sys.exit('unpacked package is missing ' + name)
 print('unpacked package OK', display)
